@@ -352,6 +352,20 @@ export default function OrderDetailPage() {
                   <p className="mt-1 font-mono text-xs text-fg">{order.payment.vaNumber}</p>
                 </div>
               ) : null}
+              {order.payment.qrString ? (
+                <div className="rounded-input border border-line bg-surface2/50 p-2.5">
+                  <p className="text-[10px] uppercase tracking-[0.12em] text-faint">{t("checkout.qris")}</p>
+                  {/^https?:\/\//.test(order.payment.qrString) ? (
+                    <img
+                      src={order.payment.qrString}
+                      alt={t("checkout.qris")}
+                      className="mx-auto mt-2 h-44 w-44 rounded bg-white p-2"
+                    />
+                  ) : (
+                    <p className="mt-1 break-all font-mono text-[10px] text-fg">{order.payment.qrString}</p>
+                  )}
+                </div>
+              ) : null}
               {order.status === "pending_payment" && order.payment.status === "pending" ? (
                 <>
                   <div className="mt-2 flex items-center gap-1.5 text-[11px] text-warning">

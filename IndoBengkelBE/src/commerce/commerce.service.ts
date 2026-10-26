@@ -389,61 +389,16 @@ export class CommerceService {
       );
     }
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "Payment" WHERE "id" = ${order.payment.id} FOR UPDATE`;
-      await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${id} FOR UPDATE`;
-      const current = await tx.order.findUnique({
-        where: { id },
-        include: { payment: true },
-      });
-      if (!current) throw new ApiError("NOT_FOUND", "Order not found.", 404);
-      if (current.status === "paid") return current;
-      if (current.status !== "pending_payment") {
-        throw new ApiError("INVALID_TRANSITION", "This order can no longer be paid.", 409);
-      }
-      if (!current.payment) {
-        throw new ApiError("INVALID_TRANSITION", "This order has no payment to simulate.", 409);
-      }
-      if (current.payment.status === "paid") {
-        return tx.order.update({
-          where: { id },
-          data: { status: "paid", paidAt: current.payment.paidAt ?? new Date() },
-          include: { payment: true },
-        });
-      }
-      if (current.payment.status !== "pending") {
-        throw new ApiError("INVALID_TRANSITION", "This payment is no longer pending.", 409);
-      }
-      if (current.payment.expiresAt <= now) {
-        throw new ApiError("PAYMENT_EXPIRED", "The payment window has closed.", 409);
-      }
-
-      const paidAt = new Date();
-      await tx.payment.update({
-        where: { id: current.payment.id },
-        data: { status: "paid", paidAt },
-      });
-      const updated = await tx.order.update({
-        where: { id },
-        data: { status: "paid", paidAt },
-        include: { payment: true },
-      });
-      const workshop = await tx.workshop.findUnique({ where: { id: updated.workshopId } });
-      if (workshop) {
-        await tx.notification.create({
-          data: {
-            id: uid("notif"),
-            userId: workshop.ownerUserId,
-            type: "order_paid",
-            title: "Order paid",
-            body: `${updated.customerName} paid ${updated.code}. Prepare it for pickup.`,
-            href: `/workshop/orders/${updated.id}`,
-          },
-        });
-      }
-      return updated;
+    const result = await this.payments.settlePaidPayment(order.payment.id);
+    const current = await this.prisma.order.findUnique({
+      where: { id },
+      include: { payment: true },
     });
-    return orderJson(result);
+    if (!current) throw new ApiError("NOT_FOUND", "Order not found.", 404);
+    if (result.status === "ignored" && current.status !== "paid") {
+      throw new ApiError("INVALID_TRANSITION", "This payment is no longer pending.", 409);
+    }
+    return orderJson(current);
   }
 
   async confirmDelivery(userId: string, id: string) {

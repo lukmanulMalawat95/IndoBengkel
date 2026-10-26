@@ -38,6 +38,8 @@ test and exercise the distributed limiter (CI does both).
 | `discovery.e2e-spec.ts` | Active-only catalogue, PostGIS distance ordering + haversine parity, radius/type/rating/name/`openNow` filters (SQL parity with the serialized flag), pagination meta incl. pages beyond the last, workshop detail, draft hidden + 404, availability slots, capacity reflected after confirmation |
 | `booking-lifecycle.e2e-spec.ts` | Booking snapshot and validation, hourly-slot/opening-hours/closure rules, vehicle-type mismatch, draft workshop, confirm → start → complete → pending payment → simulate paid, one reusable payment row, payment expiry + retry, capacity re-checked on confirmation, odometer only changes on completion, 150% approval, reject → in_progress, cash payment with provider `cash`, cancellation window, decline, no-show, mechanic required |
 | `shop-order.e2e-spec.ts` | Cross-workshop cart ownership, quantity clamp, stock reservation/restore, order creation notification type, idempotent simulated payment, cron expiry restoring stock, pickup code verification, product reviews locked until completed + comment length, weight-based shipping, tracking required, delivery confirmation, empty cart, out of stock |
+| `midtrans-provider.e2e-spec.ts` | Core API charge body for VA/QRIS, Basic auth header, VA/QR action mapping, SHA512 signature verification, invalid signature rejection, settlement/capture/expire/deny/cancel/failure/refund status mapping |
+| `midtrans-webhook.e2e-spec.ts` | Signed webhook settlement for a shop order, idempotent replay, invalid signature 401, amount mismatch 400, expire notification restoring stock |
 | `uploads.e2e-spec.ts` | Upload metadata validation, owner recorded on upload, idempotent re-registration, name conflicts across accounts, owner-only references on vehicles and workshop profiles, external URLs untouched |
 | `messaging.e2e-spec.ts` | Conversation uniqueness, message validation, two-sided delivery, unread count, read receipts, cross-workshop isolation, notifications |
 | `authorization.e2e-spec.ts` | IDOR on bookings, vehicles and catalogue, customer blocked from the workshop console, anonymous requests rejected |
@@ -124,14 +126,14 @@ behaviour.
 
 Relevant environment variables: `COOKIE_SECURE`, `TRUST_PROXY`,
 `CSRF_ENABLED`, `RATE_LIMIT_ENABLED`, `RATE_LIMIT_GLOBAL`, `REDIS_URL`,
-`PAYMENT_PROVIDER`, `PAYMENT_EXPIRY_ENABLED`. Never disable the CSRF/rate-limit
-toggles outside tests. With `REDIS_URL` set, the security suite exercises the
-Redis store; CI starts a Redis 7 service for this.
+`PAYMENT_PROVIDER`, `PAYMENT_EXPIRY_ENABLED`, `MIDTRANS_SERVER_KEY`,
+`MIDTRANS_IS_PRODUCTION`, `MIDTRANS_VA_BANK`, `MIDTRANS_QRIS_ACQUIRER`. Never
+disable the CSRF/rate-limit toggles outside tests. With `REDIS_URL` set, the
+security suite exercises the Redis store; CI starts a Redis 7 service for this.
 
-`PAYMENT_PROVIDER=fake` is required for simulation endpoints and is the only
-implemented provider. `PAYMENT_PROVIDER=midtrans` intentionally fails at startup
-until the adapter and signed webhook exist; do not weaken that check to make a
-deployment boot.
+`PAYMENT_PROVIDER=fake` remains the default and is required for simulation
+endpoints. `PAYMENT_PROVIDER=midtrans` requires `MIDTRANS_SERVER_KEY` and fails
+at startup without it; do not weaken that check to make a deployment boot.
 
 These are intentional baseline limitations, not test failures:
 
@@ -142,8 +144,10 @@ These are intentional baseline limitations, not test failures:
 - Uploads are stored on the web tier's local disk, not an object store; the
   ownership record makes the URL safe to reference, but the file itself is not
   deduplicated or garbage-collected.
-- Payments are fake. No Midtrans network call, signature or webhook is exercised;
-  the UI only shows the simulation button when `payment.provider === "fake"`.
+- Default suites use the fake provider. Midtrans is tested with a mocked Core API
+  `fetch` and locally signed webhook payloads; no live sandbox request or real
+  credential is used. The UI shows the simulation button only when
+  `payment.provider === "fake"`.
 
 The booking, review, upload and payment rules that used to be documented here as
 gaps now have regression tests: hourly slots + closures (`booking-lifecycle`),

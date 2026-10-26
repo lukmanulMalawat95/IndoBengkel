@@ -18,7 +18,7 @@ IndoBengkel adalah web app yang mempertemukan pemilik kendaraan dengan bengkel m
 
 MVP ini dirancang sebagai **demo end-to-end dengan arsitektur siap produksi**: seluruh alur bisa dijalankan lewat `docker compose up` tanpa key eksternal (pembayaran fake, email lokal), dengan data seed yang cukup agar dashboard bengkel tidak terasa kosong.
 
-Runtime yang berjalan sekarang adalah **Next.js 15 + NestJS 11 + PostgreSQL 16 + PostGIS 3.4 + Prisma**, diorkestrasi Docker Compose. Auth memakai cookie sesi `httpOnly` dan tabel `sessions`; seluruh alur customer dan konsol bengkel memanggil `/api/v1`. Data seed berisi 24 bengkel (23 aktif), 30 user, 372 layanan, 72 montir, 120 produk, 40 service order, 12 order, dan 84 review. FE juga masih menyediakan **mode mock** (`NEXT_PUBLIC_USE_MOCK_API=true`) untuk demo tanpa backend. Pembayaran memakai fake provider dengan cron expiry (Midtrans belum), chat memakai polling/refetch, dan upload disimpan di disk lokal — MinIO/S3, Mailpit, dan Socket.IO tetap menjadi target produksi dan belum dijalankan.
+Runtime yang berjalan sekarang adalah **Next.js 15 + NestJS 11 + PostgreSQL 16 + PostGIS 3.4 + Prisma**, diorkestrasi Docker Compose. Auth memakai cookie sesi `httpOnly` dan tabel `sessions`; seluruh alur customer dan konsol bengkel memanggil `/api/v1`. Data seed berisi 24 bengkel (23 aktif), 30 user, 372 layanan, 72 montir, 120 produk, 40 service order, 12 order, dan 84 review. FE juga masih menyediakan **mode mock** (`NEXT_PUBLIC_USE_MOCK_API=true`) untuk demo tanpa backend. Pembayaran memakai fake provider secara default, dengan adapter Midtrans Core API + webhook bertanda tangan dan cron expiry; chat memakai polling/refetch, dan upload disimpan di disk lokal — MinIO/S3, Mailpit, dan Socket.IO tetap menjadi target produksi dan belum dijalankan.
 
 Semua foto di produk ini **diunggah**, bukan ditempel sebagai URL: pengguna memilih file dari perangkat atau mengambil foto langsung dari kamera, gambar dikompresi di browser, dan progres unggah selalu terlihat.
 
@@ -131,7 +131,7 @@ Konsol bengkel tidak punya menu untuk melihat bengkel lain, dan laporan keuangan
 | Booking | Pilih slot, keluhan, odometer awal, konfirmasi/tolak, pembatalan, no-show |
 | Service order | Start/finish, montir, item jasa/part, foto pekerjaan (upload/kamera, maks 4), catatan, invoice, approval, pembayaran online/cash |
 | Shop | **BengkelShop** marketplace lintas bengkel, stok, diskon, berat, foto produk (upload/kamera), cart lintas bengkel (satu order per bengkel), checkout pickup/GoSend/ekspedisi + resi |
-| Pembayaran | Fake provider (lokal), Midtrans (sandbox/prod), VA/transfer/QRIS, webhook |
+| Pembayaran | Fake default (lokal/CI), Midtrans Core API (sandbox/prod), VA/transfer/QRIS, webhook bertanda tangan |
 | Review | Rating bengkel & produk, tag, balasan bengkel sekali, tanpa edit/hapus |
 | Chat | Thread per pasangan, teks + 1 gambar (upload, progres), read receipt, unread, realtime |
 | Notifikasi | In-app + email EN/ID, reminder service |
@@ -326,7 +326,7 @@ Prioritas: **M** = Must, **S** = Should, **C** = Could (v1 hanya M/S).
 | A2 | Customer punya browser modern dengan geolocation (opsional; pencarian manual selalu tersedia) |
 | A3 | Bengkel mengakses web dari desktop/tablet; verifikasi pickup dilakukan di layar |
 | A4 | Tidak ada komisi platform di v1; uang masuk ke platform lalu payout manual di luar aplikasi |
-| A5 | Midtrans sandbox tersedia saat fase 5; sebelum itu fake provider dipakai |
+| A5 | Fake provider tetap default; Midtrans sandbox dipakai untuk verifikasi live adapter/webhook |
 | A6 | Tidak ada refund; order paid wajib dipenuhi (kegagalan ditangani manual, di luar aplikasi) |
 | A7 | Bengkel tayang tanpa approval; kualitas dijaga lewat report + suspend |
 | A8 | Tidak ada login montir; montir adalah data yang dikelola pemilik |

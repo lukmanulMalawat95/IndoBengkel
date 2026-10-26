@@ -320,15 +320,24 @@ describe("BengkelShop orders", () => {
     expect(response.body.error.code).toBe("OUT_OF_STOCK");
   });
 
-  it("refuses to start with an unimplemented payment provider", () => {
-    const previous = process.env.PAYMENT_PROVIDER;
+  it("requires a server key before enabling the real payment provider", () => {
+    const previousProvider = process.env.PAYMENT_PROVIDER;
+    const previousKey = process.env.MIDTRANS_SERVER_KEY;
     try {
+      delete process.env.MIDTRANS_SERVER_KEY;
       process.env.PAYMENT_PROVIDER = "midtrans";
-      expect(() => configuredPaymentProvider()).toThrow(/not implemented/);
+      expect(() => configuredPaymentProvider()).toThrow(/requires MIDTRANS_SERVER_KEY/);
+
+      process.env.MIDTRANS_SERVER_KEY = "test-server-key";
+      expect(configuredPaymentProvider()).toBe("midtrans");
+
       process.env.PAYMENT_PROVIDER = "nope";
       expect(() => configuredPaymentProvider()).toThrow(/Unknown PAYMENT_PROVIDER/);
     } finally {
-      process.env.PAYMENT_PROVIDER = previous;
+      if (previousProvider === undefined) delete process.env.PAYMENT_PROVIDER;
+      else process.env.PAYMENT_PROVIDER = previousProvider;
+      if (previousKey === undefined) delete process.env.MIDTRANS_SERVER_KEY;
+      else process.env.MIDTRANS_SERVER_KEY = previousKey;
     }
   });
 });

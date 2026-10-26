@@ -1,10 +1,13 @@
 import { Module } from "@nestjs/common";
-import { configuredPaymentProvider } from "./payment-config";
+import { configuredPaymentProvider, midtransConfig } from "./payment-config";
 import { FakePaymentProvider } from "./fake-payment.provider";
+import { MidtransPaymentProvider } from "./midtrans-payment.provider";
 import { PAYMENT_PROVIDER, PaymentProvider } from "./payment-provider";
+import { PaymentsController } from "./payments.controller";
 import { PaymentsService } from "./payments.service";
 
 @Module({
+  controllers: [PaymentsController],
   providers: [
     {
       provide: PAYMENT_PROVIDER,
@@ -13,6 +16,8 @@ import { PaymentsService } from "./payments.service";
         switch (name) {
           case "fake":
             return new FakePaymentProvider();
+          case "midtrans":
+            return new MidtransPaymentProvider(midtransConfig());
         }
       },
     },

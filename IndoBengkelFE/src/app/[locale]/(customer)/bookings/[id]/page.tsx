@@ -277,7 +277,15 @@ export default function BookingDetailPage() {
                       {pendingPayment.qrString ? (
                         <div className="rounded-input border border-line bg-surface p-2.5">
                           <p className="text-[10px] uppercase tracking-[0.12em] text-faint">{t("checkout.qris")}</p>
-                          <p className="mt-1 break-all font-mono text-[10px] text-fg">{pendingPayment.qrString}</p>
+                          {/^https?:\/\//.test(pendingPayment.qrString) ? (
+                            <img
+                              src={pendingPayment.qrString}
+                              alt={t("checkout.qris")}
+                              className="mx-auto mt-2 h-44 w-44 rounded bg-white p-2"
+                            />
+                          ) : (
+                            <p className="mt-1 break-all font-mono text-[10px] text-fg">{pendingPayment.qrString}</p>
+                          )}
                         </div>
                       ) : null}
                       <div className="flex items-center gap-1.5 text-[11px] text-warning">

@@ -26,7 +26,7 @@
 
 **Belum (target produksi):**
 
-- Midtrans + webhook, email outbox/Mailpit, Socket.IO, presigned S3/MinIO.
+- Verifikasi Midtrans sandbox + refund/rekonsiliasi, email outbox/Mailpit, Socket.IO, presigned S3/MinIO.
 - Multi-foto produk, laporan lintas periode lanjutan.
 
 Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerjaan yang sudah selesai. Baseline lokal tidak menggantikan hardening produksi.
@@ -175,16 +175,16 @@ Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerj
 | T5.2 | Browse BengkelShop | Marketplace lintas bengkel, filter, sort, drawer detail, stok 0 |
 | T5.3 | Cart | Lintas bengkel (satu cart internal per bengkel), qty vs stok, item nonaktif, hapus per bengkel/semua |
 | T5.4 | Checkout | Validasi stok transaksional per cart, snapshot, pickup code, fulfillment + ongkir per bengkel (pickup/GoSend/ekspedisi), expiry 60 menit |
-| T5.5 | Payment adapter | ✅ `PaymentProvider` + `FakePaymentProvider`; `PAYMENT_PROVIDER=midtrans` fail-fast; Midtrans Core API + webhook ditunda |
+| T5.5 | Payment adapter | ✅ `PaymentProvider` + `FakePaymentProvider` + `MidtransPaymentProvider`; Midtrans Core API + signed webhook; fake tetap default |
 | T5.6 | Expiry & restore | ✅ Cron per menit, lock per payment, stok kembali, notifikasi; service invoice expired bisa retry |
 | T5.7 | Fulfillment | Preparing → Ready + notifikasi, verifikasi pickup code, input resi/booking ID → shipped, confirm delivery |
 | T5.8 | Review produk | Per item per order completed, agregat |
 | T5.9 | FE | `/shop`, cart lintas bengkel, checkout fulfillment per bengkel, instruksi bayar + polling, order customer (resi + confirm), order owner (ship), verifikasi pickup |
-| T5.10 | Midtrans | ⏳ Ditunda: adapter + webhook signature belum diimplementasikan; fake tetap default |
+| T5.10 | Midtrans | ✅ Core API VA/QRIS + webhook SHA512 + settlement idempotent; ⏳ verifikasi sandbox dan refund belum |
 
 **Gate test:** stok tidak negatif pada 20 checkout paralel; double-submit tidak membuat dua order; simulasi `paid` ganda tetap satu `paid`; pickup code salah 400; order expired mengembalikan stok; service invoice expired bisa di-retry; review produk hanya setelah completed.
 
-**Status fake-first:** T5.5/T5.6 selesai untuk fake provider. Midtrans (T5.10) dan webhook sengaja ditunda; `PAYMENT_PROVIDER=midtrans` gagal saat startup agar tidak ada pembayaran palsu yang terlihat nyata.
+**Status pembayaran:** fake tetap default untuk lokal/CI. Adapter Midtrans dan webhook bertanda tangan sudah diimplementasikan serta diuji dengan mock; verifikasi ke sandbox Midtrans dan refund/rekonsiliasi masih backlog.
 
 ---
 
@@ -260,7 +260,7 @@ Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerj
 
 **Gate:** `docker compose up --build` → login → semua alur inti → upload bertahan setelah reload; tidak ada error konsol.
 
-**Ditunda ke produksi:** Midtrans, S3/MinIO, Mailpit, Socket.IO.
+**Ditunda ke produksi:** verifikasi Midtrans sandbox, refund/rekonsiliasi, S3/MinIO, Mailpit, Socket.IO.
 
 ---
 
@@ -397,7 +397,7 @@ F8 (UI + upload) ──▶ F9 (API + DB + Docker) ──▶ F1–F7 hardening pr
 
 | Dependensi | Dibutuhkan di | Status |
 |---|---|---|
-| Midtrans sandbox key | F5 (opsional, simulasi tetap ada) | dari kamu |
+| Midtrans sandbox key | F5 (untuk verifikasi adapter/webhook; fake tetap default) | dari kamu |
 | Logo/aset brand | F1 (opsional; wordmark sementara) | dari kamu |
 | Persetujuan dokumen v1.2 | F0/review | dari kamu |
 | Photon instance | F2/F3 | belum; pencarian terdekat sudah PostGIS, geocoder belum |
@@ -410,7 +410,7 @@ F8 (UI + upload) ──▶ F9 (API + DB + Docker) ──▶ F1–F7 hardening pr
 | Risiko | Dampak | Rencana |
 |---|---|---|
 | Scope merembet (delivery, refund, AI) | +3–7 hari | Ditolak di v1; masuk backlog |
-| Midtrans sandbox terkendala | F5 tertunda | Fake provider menjaga alur; Midtrans diuji terpisah |
+| Midtrans sandbox terkendala | Verifikasi live tertunda | Fake provider menjaga alur; adapter/webhook diuji dengan mock dan signature lokal |
 | PostGIS + Prisma menyita waktu | +1 hari | Selesai: index ekspresi menghindari `Unsupported`, raw SQL diisolasi di `WorkshopGeoRepository`, `migrate diff` tetap bersih |
 | Socket.IO single instance | Tidak scale | Diterima v1; Redis sudah ada untuk rate limit, adapter Socket.IO menyusul |
 | Seed data kurang meyakinkan | Demo lemah | Dikerjakan bertahap sejak F3, final di F7 |
@@ -425,7 +425,7 @@ F8 (UI + upload) ──▶ F9 (API + DB + Docker) ──▶ F1–F7 hardening pr
 
 1. **Review** dokumen v1.2 (PRD, FSD, TSD, PLAN) dan stack lokal yang sudah berjalan.
 2. **Uji alur** di `http://localhost:3000` dengan akun demo; catat koreksi.
-3. **Opsional berikutnya:** logo/wordmark, akun Midtrans sandbox, keputusan object storage.
+3. **Opsional berikutnya:** logo/wordmark, akun Midtrans sandbox untuk verifikasi live, keputusan object storage.
 4. **Saat checkpoint:** review aplikasi berjalan + daftar koreksi; saya perbaiki sebelum hardening.
 
 ---
@@ -434,7 +434,7 @@ F8 (UI + upload) ──▶ F9 (API + DB + Docker) ──▶ F1–F7 hardening pr
 
 | Prioritas | Item |
 |---|---|
-| P1 | Midtrans + webhook, email outbox/Mailpit, Socket.IO realtime |
+| P1 | Verifikasi Midtrans sandbox + refund/rekonsiliasi, email outbox/Mailpit, Socket.IO realtime |
 | P1 | Presigned S3/MinIO + multi-foto produk |
 | P1 | Refund & pembatalan setelah bayar; ledger payout; halaman payout |
 | P1 | Pengiriman lokal + tarif berat (motor/pickup/truk) |

@@ -36,7 +36,7 @@ Dokumen ini menjelaskan **perilaku sistem**. Skema data, endpoint, dan keputusan
 
 **Aturan umum:** satu email = satu role; akun `suspended` tidak bisa login; bengkel `suspended` tidak muncul di pencarian dan tidak bisa menerima booking/order baru, tetapi order yang sudah ada tetap bisa diselesaikan. Workshop Owner memakai halaman customer yang sama untuk kebutuhan pribadinya; konsol bengkel tetap hanya menampilkan data bengkelnya. **Tidak ada peran admin platform** — tidak ada endpoint atau halaman lintas-bengkel di konsol.
 
-**Runtime saat ini:** seluruh perilaku di bawah ini dijalankan oleh FE Next.js yang memanggil NestJS `/api/v1` dan PostgreSQL melalui proxy same-origin. FE tetap bisa dijalankan dengan mock API `localStorage` (`NEXT_PUBLIC_USE_MOCK_API=true`) untuk demo tanpa backend. Upload memakai `POST /api/uploads` dan disajikan lewat `GET /api/uploads/[name]` (lihat F-41). Pembayaran memakai fake provider + cron expiry; chat memakai refetch/polling, belum Socket.IO.
+**Runtime saat ini:** seluruh perilaku di bawah ini dijalankan oleh FE Next.js yang memanggil NestJS `/api/v1` dan PostgreSQL melalui proxy same-origin. FE tetap bisa dijalankan dengan mock API `localStorage` (`NEXT_PUBLIC_USE_MOCK_API=true`) untuk demo tanpa backend. Upload memakai `POST /api/uploads` dan disajikan lewat `GET /api/uploads/[name]` (lihat F-41). Pembayaran memakai fake provider secara default, dengan adapter Midtrans Core API + webhook bertanda tangan dan cron expiry; chat memakai refetch/polling, belum Socket.IO.
 
 ---
 
@@ -342,8 +342,8 @@ Dokumen ini menjelaskan **perilaku sistem**. Skema data, endpoint, dan keputusan
 
 ### F-28 — Pembayaran Order
 
-**Alur:** order dibuat → payment `pending` (simulasi lokal) → halaman instruksi (VA number/QR/transfer) + countdown → status dicek via polling/refetch → `paid` setelah **Simulasikan pembayaran**. Target produksi memakai Midtrans Core API + webhook bertanda tangan.
-**Aturan:** fake provider menampilkan tombol simulasi di UI customer (hanya bila `payment.provider === "fake"`); Midtrans memakai Core API charge; webhook diverifikasi signature & idempotent; cron tiap menit menandai `expired` + mengembalikan stok.
+**Alur:** order dibuat → payment `pending` → halaman instruksi (VA number/QR/transfer) + countdown → status dicek via polling/refetch → `paid` setelah simulasi fake atau webhook Midtrans bertanda tangan. Provider dipilih lewat `PAYMENT_PROVIDER`; fake tetap default.
+**Aturan:** fake provider menampilkan tombol simulasi di UI customer (hanya bila `payment.provider === "fake"`); Midtrans memakai Core API charge, webhook diverifikasi SHA512 dan amount, lalu transisi payment/order memakai lock yang sama dengan simulasi; cron tiap menit menandai `expired` + mengembalikan stok.
 **AC:** customer tidak bisa membatalkan setelah `paid`; order expired harus checkout ulang (payment baru); simulasi `paid` idempotent; status tidak pernah mundur dari `paid`.
 
 ---

@@ -354,54 +354,19 @@ export class BookingsService {
       );
     }
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      // Lock the parent first, matching `pay`/`payCash`, so a concurrent
-      // settlement and cash recording cannot deadlock on the payment row.
-      await tx.$queryRaw`SELECT "id" FROM "ServiceOrder" WHERE "id" = ${id} FOR UPDATE`;
-      await tx.$queryRaw`SELECT "id" FROM "Payment" WHERE "id" = ${order.payment.id} FOR UPDATE`;
-      const current = await tx.serviceOrder.findUnique({
-        where: { id },
-        include: { payment: true },
-      });
-      if (!current) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
-      if (current.status === "paid") return current;
-      if (current.status !== "completed") {
-        throw new ApiError("INVALID_TRANSITION", "This invoice is not ready to pay.", 409);
-      }
-      if (!current.payment) {
-        throw new ApiError("INVALID_TRANSITION", "Create a payment first.", 409);
-      }
-      if (current.payment.status !== "pending") {
-        if (current.payment.status === "paid") return current;
-        if (current.payment.status === "expired") {
-          throw new ApiError("PAYMENT_EXPIRED", "The payment window has closed.", 409);
-        }
-        throw new ApiError("INVALID_TRANSITION", "This payment is no longer pending.", 409);
-      }
-      if (current.payment.expiresAt <= now) {
+    const result = await this.payments.settlePaidPayment(order.payment.id);
+    const current = await this.prisma.serviceOrder.findUnique({
+      where: { id },
+      include: { payment: true },
+    });
+    if (!current) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
+    if (result.status === "ignored" && current.status !== "paid") {
+      if (current.payment?.status === "expired") {
         throw new ApiError("PAYMENT_EXPIRED", "The payment window has closed.", 409);
       }
-
-      const paidAt = new Date();
-      await tx.payment.update({
-        where: { id: current.payment.id },
-        data: { status: "paid", paidAt },
-      });
-      const paid = await tx.serviceOrder.update({
-        where: { id },
-        data: {
-          status: "paid",
-          paymentMethod: current.payment.method,
-          paidAt,
-        },
-        include: { payment: true },
-      });
-      await this.touchVehicle(tx, paid);
-      await this.notifyPaid(tx, paid);
-      return paid;
-    });
-
-    return serviceOrderJson(updated);
+      throw new ApiError("INVALID_TRANSITION", "This payment is no longer pending.", 409);
+    }
+    return serviceOrderJson(current);
   }
 
   private async payCash(userId: string, id: string) {

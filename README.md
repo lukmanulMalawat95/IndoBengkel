@@ -17,7 +17,7 @@ This repository is the **working local baseline**: a Next.js frontend, a NestJS 
 | Database | PostgreSQL 16 + PostGIS 3.4 (`postgis/postgis:16-3.4-alpine`) |
 | Rate limiting | Redis 7 (`redis:7-alpine`), shared counters; falls back to process memory when Redis is unavailable |
 | Uploads | `POST /api/uploads` → `public/uploads` volume, served by `GET /api/uploads/[name]` |
-| Payments | Fake provider (`PAYMENT_PROVIDER=fake`), VA/transfer/QRIS instructions, cron expiry; Midtrans not wired |
+| Payments | Fake provider by default, Midtrans Core API adapter + signed webhook, VA/transfer/QRIS instructions, cron expiry |
 | Orchestration | Docker Compose (`db`, `redis`, `backend`, `frontend`) |
 | Demo data | 24 workshops (23 active), 30 users, 372 services, 72 mechanics, 120 products, 40 service orders, 12 orders, 84 reviews |
 
@@ -192,11 +192,19 @@ real money.
 - A cron runs every minute, locks each expired payment, marks the shop order
   `expired` and restores stock, or marks the service invoice payment `expired`
   so the customer can retry. `PAYMENT_EXPIRY_ENABLED=false` disables it in tests.
-- `PAYMENT_PROVIDER=midtrans` fails at startup until the adapter and signed
-  webhook are implemented. That is deliberate: no silent fallback.
+- `PAYMENT_PROVIDER=midtrans` uses the Midtrans Core API. It requires
+  `MIDTRANS_SERVER_KEY`; startup fails without it, so there is no silent
+  fallback. Keep `PAYMENT_PROVIDER=fake` for local, Docker and CI.
+- Midtrans calls `POST /api/v1/payments/midtrans/notification`. The endpoint is
+  public, exempt from CSRF, verifies
+  `SHA512(order_id + status_code + gross_amount + serverKey)`, checks the amount,
+  and applies the same locked state transitions as the fake simulation.
+- Optional Midtrans settings: `MIDTRANS_IS_PRODUCTION=false`,
+  `MIDTRANS_VA_BANK=bca`, `MIDTRANS_QRIS_ACQUIRER=gopay`.
 
 The frontend shows the simulate button only when `payment.provider === "fake"`,
-and polls pending payments until they are paid or expired.
+renders Midtrans QRIS as an image, and polls pending payments until they are paid
+or expired.
 
 ---
 
@@ -228,8 +236,8 @@ IndoBengkel/
 
 These are intentionally deferred to production hardening:
 
-- Midtrans adapter + signed webhook (fake provider, provider abstraction and
-  expiry cron are in place; `PAYMENT_PROVIDER=midtrans` intentionally fails fast)
+- Midtrans reconciliation/refund flow (adapter, signed webhook and settlement
+  are in place; refunds and payment-event history are not)
 - Email delivery/Mailpit and email verification enforcement
 - Socket.IO realtime chat (currently REST + refetch)
 - MinIO/S3 presigned uploads (uploads are stored on the web tier's local disk;
