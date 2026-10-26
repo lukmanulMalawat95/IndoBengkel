@@ -156,7 +156,7 @@ Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerj
 | T4.4 | Start | Odometer + montir aktif, transisi state |
 | T4.5 | Finish | Item jasa/part, foto pekerjaan (maks 4, uploader + progres), catatan, total, potong stok part |
 | T4.6 | Approval >150% | `awaiting_approval`, approve/reject, revisi item |
-| T4.7 | Payment service | Fake provider + VA/QRIS/transfer, cash oleh owner, idempotensi |
+| T4.7 | Payment service | Payment row per service order, fake provider + VA/QRIS/transfer, cash oleh owner, simulasi idempotent, retry setelah expired |
 | T4.8 | Cancel/no-show | Aturan 2 jam, alasan owner, no-show 30 menit |
 | T4.9 | Riwayat & odometer | Update saat selesai, last workshop |
 | T4.10 | Review bengkel | Create, tag, agregat, balas sekali |
@@ -175,14 +175,16 @@ Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerj
 | T5.2 | Browse BengkelShop | Marketplace lintas bengkel, filter, sort, drawer detail, stok 0 |
 | T5.3 | Cart | Lintas bengkel (satu cart internal per bengkel), qty vs stok, item nonaktif, hapus per bengkel/semua |
 | T5.4 | Checkout | Validasi stok transaksional per cart, snapshot, pickup code, fulfillment + ongkir per bengkel (pickup/GoSend/ekspedisi), expiry 60 menit |
-| T5.5 | Payment adapter | Interface + Fake + Midtrans Core API + webhook signature |
-| T5.6 | Expiry & restore | Cron per menit, stok kembali, status expired |
+| T5.5 | Payment adapter | ✅ `PaymentProvider` + `FakePaymentProvider`; `PAYMENT_PROVIDER=midtrans` fail-fast; Midtrans Core API + webhook ditunda |
+| T5.6 | Expiry & restore | ✅ Cron per menit, lock per payment, stok kembali, notifikasi; service invoice expired bisa retry |
 | T5.7 | Fulfillment | Preparing → Ready + notifikasi, verifikasi pickup code, input resi/booking ID → shipped, confirm delivery |
 | T5.8 | Review produk | Per item per order completed, agregat |
 | T5.9 | FE | `/shop`, cart lintas bengkel, checkout fulfillment per bengkel, instruksi bayar + polling, order customer (resi + confirm), order owner (ship), verifikasi pickup |
-| T5.10 | Midtrans | Uji sandbox bila key tersedia; fallback fake |
+| T5.10 | Midtrans | ⏳ Ditunda: adapter + webhook signature belum diimplementasikan; fake tetap default |
 
-**Gate test:** stok tidak negatif pada 20 checkout paralel; double-submit tidak membuat dua order; webhook ganda hanya satu `paid`; pickup code salah 400; order expired mengembalikan stok; review produk hanya setelah completed.
+**Gate test:** stok tidak negatif pada 20 checkout paralel; double-submit tidak membuat dua order; simulasi `paid` ganda tetap satu `paid`; pickup code salah 400; order expired mengembalikan stok; service invoice expired bisa di-retry; review produk hanya setelah completed.
+
+**Status fake-first:** T5.5/T5.6 selesai untuk fake provider. Midtrans (T5.10) dan webhook sengaja ditunda; `PAYMENT_PROVIDER=midtrans` gagal saat startup agar tidak ada pembayaran palsu yang terlihat nyata.
 
 ---
 
@@ -248,7 +250,7 @@ Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerj
 
 | ID | Task | Detail |
 |---|---|---|
-| T9.1 | Skema & seed | Prisma 15 model; seed snapshot deterministik (reset tabel saat start); 24 bengkel/23 aktif; owner untuk tiap bengkel |
+| T9.1 | Skema & seed | Prisma 16 model; seed snapshot deterministik (reset tabel saat start); 24 bengkel/23 aktif; owner untuk tiap bengkel |
 | T9.2 | Auth & guard | Cookie `ib_session` httpOnly + `sessions`; role customer/owner; query kepemilikan |
 | T9.3 | Modul API | Auth, katalog, kendaraan, booking, commerce, konsol, messaging, notifikasi, demo, health |
 | T9.4 | Integrasi FE | `NEXT_PUBLIC_USE_MOCK_API=false`; rewrite `/api/*` → backend; envelope pagination; error handling |
@@ -273,9 +275,9 @@ Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerj
 | T10.3 | Browser e2e | Playwright Chromium + mobile viewport terhadap stack Docker; login demo, booking, konsol owner, shop, chat |
 | T10.4 | CI | GitHub Actions: backend (Postgres service + typecheck + build + test), frontend (typecheck + build), e2e (Docker compose + report/log saat gagal) |
 
-**Deliverable:** `cd IndoBengkelBE && npm test` hijau (50 API test default, 51 saat `REDIS_URL` diset) dan `npm run test:e2e` hijau (8 browser test) di stack lokal; lihat `docs/TESTING.md`.
+**Deliverable:** `cd IndoBengkelBE && npm test` hijau (66 API test default, 67 saat `REDIS_URL` diset) dan `npm run test:e2e` hijau (9 browser test) di stack lokal; lihat `docs/TESTING.md`.
 
-**Catatan:** suite API menemukan dua celah kontrak yang belum diimplementasikan — kapasitas slot tidak dicek ulang saat `confirm`, dan jam buka/closure hanya divalidasi lewat endpoint availability. Keduanya dicatat di `docs/TESTING.md` dan masuk backlog hardening.
+**Catatan:** celah kontrak yang ditemukan suite API (kapasitas slot saat `confirm`, jam buka/closure, panjang komentar review, kepemilikan upload) sudah ditutup dan memiliki regression test; lihat `docs/TESTING.md`.
 
 ---
 

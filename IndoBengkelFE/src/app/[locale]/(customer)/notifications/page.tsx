@@ -10,6 +10,7 @@ import {
   Star,
   Truck,
   Wrench,
+  XCircle,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
@@ -39,7 +40,10 @@ const iconByType: Record<NotificationType, React.ComponentType<{ className?: str
   estimate_approval: ShieldAlert,
   service_completed: Wrench,
   service_paid: CheckCheck,
+  service_payment_expired: XCircle,
+  order_created: Package,
   order_paid: Package,
+  order_expired: XCircle,
   order_ready: Package,
   order_shipped: Truck,
   order_completed: Package,

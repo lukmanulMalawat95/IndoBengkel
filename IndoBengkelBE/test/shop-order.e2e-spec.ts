@@ -1,4 +1,7 @@
 import { INestApplication } from "@nestjs/common";
+import { PrismaService } from "../src/prisma/prisma.service";
+import { PaymentsService } from "../src/payments/payments.service";
+import { configuredPaymentProvider } from "../src/payments/payment-config";
 import {
   API,
   Agent,
@@ -125,6 +128,48 @@ describe("BengkelShop orders", () => {
 
     const again = await customer.post(`${API}/orders/${order.id}/cancel`).expect(409);
     expect(again.body.error.code).toBe("INVALID_TRANSITION");
+  });
+
+  it("marks a simulated order payment idempotently", async () => {
+    const product = await addProduct({ stock: 5 });
+    const order = await createPickupOrder(product.id, 1);
+
+    const createdNotifications = await workshop.agent.get(`${API}/notifications`).expect(200);
+    expect(
+      createdNotifications.body.data.some((entry: any) => entry.type === "order_created"),
+    ).toBe(true);
+
+    const paid = await customer.post(`${API}/orders/${order.id}/pay`).expect(201);
+    expect(paid.body.data.status).toBe("paid");
+    expect(paid.body.data.payment.status).toBe("paid");
+
+    const again = await customer.post(`${API}/orders/${order.id}/pay`).expect(201);
+    expect(again.body.data.status).toBe("paid");
+    expect(again.body.data.payment.id).toBe(paid.body.data.payment.id);
+    expect(await stockOf(product.id)).toBe(4);
+  });
+
+  it("expires an unpaid order, restores stock and refuses payment", async () => {
+    const product = await addProduct({ stock: 5 });
+    const order = await createPickupOrder(product.id, 2);
+
+    const prisma = app.get(PrismaService);
+    await prisma.payment.update({
+      where: { id: order.payment.id },
+      data: { expiresAt: new Date(Date.now() - 1_000) },
+    });
+
+    const payments = app.get(PaymentsService);
+    const summary = await payments.expirePendingPayments();
+    expect(summary.orders).toBeGreaterThanOrEqual(1);
+
+    const expired = await customer.get(`${API}/orders/${order.id}`).expect(200);
+    expect(expired.body.data.status).toBe("expired");
+    expect(expired.body.data.payment.status).toBe("expired");
+    expect(await stockOf(product.id)).toBe(5);
+
+    const blocked = await customer.post(`${API}/orders/${order.id}/pay`).expect(409);
+    expect(blocked.body.error.code).toBe("INVALID_TRANSITION");
   });
 
   it("completes a pickup order only with the correct pickup code", async () => {
@@ -273,5 +318,17 @@ describe("BengkelShop orders", () => {
     const soldOut = await addProduct({ stock: 0 });
     const response = await addToCart(soldOut.id, 1).expect(409);
     expect(response.body.error.code).toBe("OUT_OF_STOCK");
+  });
+
+  it("refuses to start with an unimplemented payment provider", () => {
+    const previous = process.env.PAYMENT_PROVIDER;
+    try {
+      process.env.PAYMENT_PROVIDER = "midtrans";
+      expect(() => configuredPaymentProvider()).toThrow(/not implemented/);
+      process.env.PAYMENT_PROVIDER = "nope";
+      expect(() => configuredPaymentProvider()).toThrow(/Unknown PAYMENT_PROVIDER/);
+    } finally {
+      process.env.PAYMENT_PROVIDER = previous;
+    }
   });
 });

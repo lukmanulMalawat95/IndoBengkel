@@ -269,6 +269,7 @@ export class WorkshopService {
     const workshop = await this.requireOwner(user);
     const orders = await this.prisma.serviceOrder.findMany({
       where: { workshopId: workshop.id, ...(status ? { status } : {}) },
+      include: { payment: true },
       orderBy: { scheduledAt: "asc" },
     });
     return orders.map(serviceOrderJson);
@@ -303,6 +304,7 @@ export class WorkshopService {
       return tx.serviceOrder.update({
         where: { id },
         data: { status: "confirmed", estimatedTotal: Number(estimatedTotal) || 0 },
+        include: { payment: true },
       });
     });
     await this.notify(
@@ -327,6 +329,7 @@ export class WorkshopService {
     const updated = await this.prisma.serviceOrder.update({
       where: { id },
       data: { status: "declined", cancelReason: String(reason ?? "") },
+      include: { payment: true },
     });
     await this.notify(
       order.customerId,
@@ -366,6 +369,7 @@ export class WorkshopService {
         mechanicIds: mechanics.map((mechanic) => mechanic.id),
         mechanicNames: mechanics.map((mechanic) => mechanic.name),
       },
+      include: { payment: true },
     });
     await this.notify(
       order.customerId,
@@ -409,6 +413,7 @@ export class WorkshopService {
           status: needsApproval ? "awaiting_approval" : "completed",
           completedAt: new Date(),
         },
+        include: { payment: true },
       });
       if (!needsApproval) {
         await this.touchVehicle(tx, next);
@@ -438,9 +443,42 @@ export class WorkshopService {
       throw new ApiError("INVALID_TRANSITION", "Cash can only be recorded for a completed service.", 409);
     }
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "ServiceOrder" WHERE "id" = ${id} FOR UPDATE`;
+      const current = await tx.serviceOrder.findUnique({
+        where: { id },
+        include: { payment: true },
+      });
+      if (!current) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
+      if (current.status === "paid") return current;
+      if (current.status !== "completed") {
+        throw new ApiError("INVALID_TRANSITION", "Cash can only be recorded for a completed service.", 409);
+      }
+
+      const paidAt = new Date();
+      const amount = current.finalTotal ?? current.estimatedTotal;
+      const data = {
+        provider: "cash",
+        method: "cash",
+        amount,
+        status: "paid",
+        providerRef: uid("cash"),
+        vaNumber: null,
+        qrString: null,
+        expiresAt: paidAt,
+        paidAt,
+      };
+      if (current.payment) {
+        await tx.payment.update({ where: { id: current.payment.id }, data });
+      } else {
+        await tx.payment.create({
+          data: { id: uid("pay"), serviceOrderId: id, ...data },
+        });
+      }
+
       const updated = await tx.serviceOrder.update({
         where: { id },
-        data: { status: "paid", paymentMethod: "cash", paidAt: new Date() },
+        data: { status: "paid", paymentMethod: "cash", paidAt },
+        include: { payment: true },
       });
       await this.touchVehicle(tx, updated);
       return serviceOrderJson(updated);
@@ -459,6 +497,7 @@ export class WorkshopService {
     const updated = await this.prisma.serviceOrder.update({
       where: { id },
       data: { status: "no_show" },
+      include: { payment: true },
     });
     return serviceOrderJson(updated);
   }
@@ -620,7 +659,10 @@ export class WorkshopService {
         where: { id: workshop.id },
         include: this.ownerInclude(),
       }),
-      this.prisma.serviceOrder.findMany({ where: { workshopId: workshop.id } }),
+      this.prisma.serviceOrder.findMany({
+        where: { workshopId: workshop.id },
+        include: { payment: true },
+      }),
       this.prisma.order.findMany({
         where: { workshopId: workshop.id },
         include: { payment: true },

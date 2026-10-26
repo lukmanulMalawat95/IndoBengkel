@@ -42,6 +42,10 @@ if (process.env.TEST_DATABASE_URL) {
 
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? "test-secret";
+process.env.PAYMENT_PROVIDER = process.env.PAYMENT_PROVIDER ?? "fake";
+// The expiry job has its own deterministic test; do not let a background tick
+// race fixtures that deliberately set short payment windows.
+process.env.PAYMENT_EXPIRY_ENABLED = "false";
 
 // The API suites make hundreds of requests from one IP in a few seconds and
 // reuse fixtures across suites. Turn the production controls off by default;

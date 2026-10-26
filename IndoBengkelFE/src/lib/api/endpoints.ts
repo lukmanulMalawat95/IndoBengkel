@@ -46,6 +46,7 @@ export const endpoints = {
     approveEstimate: (id: string) => `/service-orders/${id}/approve-estimate`,
     rejectEstimate: (id: string) => `/service-orders/${id}/reject-estimate`,
     pay: (id: string) => `/service-orders/${id}/pay`,
+    simulatePaid: (id: string) => `/service-orders/${id}/simulate-paid`,
   },
   reviews: {
     workshop: "/reviews/workshop",

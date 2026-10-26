@@ -40,4 +40,9 @@ export class BookingsController {
   async pay(@CurrentUser() user: any, @Param("id") id: string, @Body() body: { method?: string }) {
     return { data: await this.bookings.pay(user.id, id, String(body.method ?? "qris")) };
   }
+
+  @Post(":id/simulate-paid")
+  async simulatePaid(@CurrentUser() user: any, @Param("id") id: string) {
+    return { data: await this.bookings.simulatePaid(user.id, id) };
+  }
 }

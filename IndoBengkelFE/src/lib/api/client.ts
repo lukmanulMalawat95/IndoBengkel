@@ -105,6 +105,8 @@ function createRestApi() {
         method: "POST",
         body: JSON.stringify({ method }),
       }),
+    simulateServicePayment: (id: string) =>
+      apiFetch(endpoints.serviceOrders.simulatePaid(id), { method: "POST" }),
     reviewWorkshop: (input: CreateReviewInput) =>
       apiFetch(endpoints.reviews.workshop, { method: "POST", body: JSON.stringify(input) }),
 

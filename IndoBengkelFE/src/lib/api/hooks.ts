@@ -127,6 +127,8 @@ export function useOrder(id: string, enabled = true) {
     queryKey: queryKeys.order(id),
     queryFn: () => api.getOrder(id),
     enabled: enabled && Boolean(id),
+    refetchInterval: (query) =>
+      query.state.data?.status === "pending_payment" ? 5_000 : false,
   });
 }
 
@@ -208,6 +210,11 @@ export function useServiceOrder(id: string, enabled = true) {
     queryKey: queryKeys.serviceOrder(id),
     queryFn: () => api.getServiceOrder(id),
     enabled: enabled && Boolean(id),
+    refetchInterval: (query) =>
+      query.state.data?.status === "completed" &&
+      query.state.data?.payment?.status === "pending"
+        ? 5_000
+        : false,
   });
 }
 
@@ -248,6 +255,14 @@ export function usePayServiceOrder() {
   return useMutation({
     mutationFn: (input: { id: string; method: PaymentMethod }) =>
       api.payServiceOrder(input.id, input.method),
+    onSuccess: invalidate,
+  });
+}
+
+export function useSimulateServicePayment() {
+  const invalidate = useInvalidateAll();
+  return useMutation({
+    mutationFn: (id: string) => api.simulateServicePayment(id),
     onSuccess: invalidate,
   });
 }

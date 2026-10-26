@@ -17,6 +17,7 @@ This repository is the **working local baseline**: a Next.js frontend, a NestJS 
 | Database | PostgreSQL 16 + PostGIS 3.4 (`postgis/postgis:16-3.4-alpine`) |
 | Rate limiting | Redis 7 (`redis:7-alpine`), shared counters; falls back to process memory when Redis is unavailable |
 | Uploads | `POST /api/uploads` → `public/uploads` volume, served by `GET /api/uploads/[name]` |
+| Payments | Fake provider (`PAYMENT_PROVIDER=fake`), VA/transfer/QRIS instructions, cron expiry; Midtrans not wired |
 | Orchestration | Docker Compose (`db`, `redis`, `backend`, `frontend`) |
 | Demo data | 24 workshops (23 active), 30 users, 372 services, 72 mechanics, 120 products, 40 service orders, 12 orders, 84 reviews |
 
@@ -161,8 +162,8 @@ Main groups:
 - `auth` — login, register, logout, session, locale
 - `workshops`, `products` — public catalogue, availability
 - `vehicles` — customer garage
-- `service-orders` — booking, estimate approval, payment simulation
-- `cart`, `orders`, `reviews` — BengkelShop checkout and reviews
+- `service-orders` — booking, estimate approval, pending invoice payment + fake simulation
+- `cart`, `orders`, `reviews` — BengkelShop checkout, fake payment, reviews
 - `workshop/*` — owner console (profile, mechanics, services, products, bookings, orders, reviews, dashboard)
 - `conversations`, `notifications` — chat and in-app notifications
 - `demo/reset`, `health`
@@ -172,6 +173,30 @@ Responses use `{ data }` for single resources and `{ data, meta }` for paginated
 ```json
 { "error": { "code": "INVALID_TRANSITION", "message": "…" } }
 ```
+
+---
+
+## Payments (fake-first)
+
+`PAYMENT_PROVIDER=fake` is the default for local, Docker and CI. It never makes a
+network call and only produces demo instructions, so it must never be used for
+real money.
+
+- `POST /orders` creates the order and a pending `Payment` (VA, transfer or QRIS).
+- `POST /orders/:id/pay` simulates settlement for the fake provider. It is
+  idempotent when the order is already paid and returns `409` for a cancelled or
+  expired order.
+- `POST /service-orders/:id/pay` creates or refreshes one pending invoice payment;
+  `POST /service-orders/:id/simulate-paid` settles it. Cash is recorded as a
+  `Payment` with provider `cash`.
+- A cron runs every minute, locks each expired payment, marks the shop order
+  `expired` and restores stock, or marks the service invoice payment `expired`
+  so the customer can retry. `PAYMENT_EXPIRY_ENABLED=false` disables it in tests.
+- `PAYMENT_PROVIDER=midtrans` fails at startup until the adapter and signed
+  webhook are implemented. That is deliberate: no silent fallback.
+
+The frontend shows the simulate button only when `payment.provider === "fake"`,
+and polls pending payments until they are paid or expired.
 
 ---
 
@@ -203,7 +228,8 @@ IndoBengkel/
 
 These are intentionally deferred to production hardening:
 
-- Midtrans + signed webhook (current payment is a local simulation)
+- Midtrans adapter + signed webhook (fake provider, provider abstraction and
+  expiry cron are in place; `PAYMENT_PROVIDER=midtrans` intentionally fails fast)
 - Email delivery/Mailpit and email verification enforcement
 - Socket.IO realtime chat (currently REST + refetch)
 - MinIO/S3 presigned uploads (uploads are stored on the web tier's local disk;

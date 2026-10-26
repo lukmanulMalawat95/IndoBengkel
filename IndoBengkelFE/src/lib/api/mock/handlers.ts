@@ -740,7 +740,7 @@ export const mockApi = {
       addNotification(
         db,
         workshop.ownerUserId,
-        "order_paid",
+        "order_created",
         "New shop order",
         `${user.fullName} placed a ${fulfillment === "expedition" ? "delivery" : "pickup"} order at ${workshop.name}.`,
         "/workshop/orders",
@@ -798,7 +798,16 @@ export const mockApi = {
       const order = db.orders.find((item) => item.id === id);
       if (!order) throw new ApiError("NOT_FOUND", "Order not found.", 404);
       ensureOrderAccess(order, user);
-      if (order.status !== "pending_payment") return order;
+      if (order.status === "paid") return order;
+      if (order.status !== "pending_payment") {
+        throw new ApiError("INVALID_TRANSITION", "This order can no longer be paid.", 409);
+      }
+      if (order.payment.status !== "pending") {
+        throw new ApiError("INVALID_TRANSITION", "This payment is no longer pending.", 409);
+      }
+      if (new Date(order.payment.expiresAt) <= new Date()) {
+        throw new ApiError("PAYMENT_EXPIRED", "The payment window has closed.", 409);
+      }
       order.status = "paid";
       order.paidAt = new Date().toISOString();
       order.payment.status = "paid";
@@ -1113,12 +1122,100 @@ export const mockApi = {
         (item) => item.id === id && item.customerId === user.id,
       );
       if (!order) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
+      if (order.status === "paid") return order;
       if (order.status !== "completed") {
         throw new ApiError("INVALID_TRANSITION", "This invoice is not ready to pay.", 409);
       }
+
+      const now = new Date();
+      const paidAt = now.toISOString();
+      const amount = order.finalTotal ?? order.estimatedTotal;
+
+      if (method === "cash") {
+        order.status = "paid";
+        order.paymentMethod = "cash";
+        order.paidAt = paidAt;
+        order.payment = {
+          id: order.payment?.id ?? uid("pay"),
+          serviceOrderId: order.id,
+          provider: "cash",
+          method: "cash",
+          amount,
+          status: "paid",
+          providerRef: uid("cash"),
+          expiresAt: paidAt,
+          paidAt,
+        };
+        updateVehicleAfterService(db, order);
+        const workshop = db.workshops.find((item) => item.id === order.workshopId);
+        if (workshop) {
+          addNotification(
+            db,
+            workshop.ownerUserId,
+            "service_paid",
+            "Service paid",
+            `${order.customerName} paid ${order.code}.`,
+            `/workshop/service-orders/${order.id}`,
+          );
+        }
+        return order;
+      }
+
+      if (order.payment?.status === "pending" && new Date(order.payment.expiresAt) > now) {
+        return order;
+      }
+
+      const expiresAt = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+      order.payment = {
+        id: order.payment?.id ?? uid("pay"),
+        serviceOrderId: order.id,
+        provider: "fake",
+        method,
+        amount,
+        status: "pending",
+        providerRef: `FAKE-${randomCode("", 8).replace("-", "")}`,
+        vaNumber:
+          method === "va" || method === "bank_transfer"
+            ? `8808 ${Math.floor(1000 + Math.random() * 8999)} ${Math.floor(1000 + Math.random() * 8999)}`
+            : undefined,
+        qrString:
+          method === "qris"
+            ? `00020101021226${randomCode("", 8).replace("-", "")}5802ID`
+            : undefined,
+        expiresAt,
+      };
+      return order;
+    });
+  },
+
+  async simulateServicePayment(id: string) {
+    await wait();
+    const user = actor();
+    return mutateDb((db) => {
+      const order = db.serviceOrders.find(
+        (item) => item.id === id && item.customerId === user.id,
+      );
+      if (!order) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
+      if (order.status === "paid") return order;
+      if (order.status !== "completed") {
+        throw new ApiError("INVALID_TRANSITION", "This invoice is not ready to pay.", 409);
+      }
+      if (!order.payment) {
+        throw new ApiError("INVALID_TRANSITION", "Create a payment first.", 409);
+      }
+      if (order.payment.status !== "pending") {
+        throw new ApiError("INVALID_TRANSITION", "This payment is no longer pending.", 409);
+      }
+      if (new Date(order.payment.expiresAt) <= new Date()) {
+        throw new ApiError("PAYMENT_EXPIRED", "The payment window has closed.", 409);
+      }
+
+      const paidAt = new Date().toISOString();
+      order.payment.status = "paid";
+      order.payment.paidAt = paidAt;
       order.status = "paid";
-      order.paymentMethod = method;
-      order.paidAt = new Date().toISOString();
+      order.paymentMethod = order.payment.method;
+      order.paidAt = paidAt;
       updateVehicleAfterService(db, order);
       const workshop = db.workshops.find((item) => item.id === order.workshopId);
       if (workshop) {

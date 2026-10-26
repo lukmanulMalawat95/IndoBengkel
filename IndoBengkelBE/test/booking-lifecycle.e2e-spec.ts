@@ -1,4 +1,6 @@
 import { INestApplication } from "@nestjs/common";
+import { PrismaService } from "../src/prisma/prisma.service";
+import { PaymentsService } from "../src/payments/payments.service";
 import {
   API,
   Agent,
@@ -255,12 +257,24 @@ describe("Service booking lifecycle", () => {
     const afterComplete = await customer.get(`${API}/vehicles/${vehicleId}`).expect(200);
     expect(afterComplete.body.data.odometerKm).toBe(booking.odometerIn + 500);
 
-    const paid = await customer
+    const pending = await customer
       .post(`${API}/service-orders/${booking.id}/pay`)
       .send({ method: "qris" })
       .expect(201);
+    expect(pending.body.data.status).toBe("completed");
+    expect(pending.body.data.payment).toMatchObject({
+      status: "pending",
+      method: "qris",
+      provider: "fake",
+    });
+    expect(pending.body.data.payment.qrString).toBeTruthy();
+
+    const paid = await customer
+      .post(`${API}/service-orders/${booking.id}/simulate-paid`)
+      .expect(201);
     expect(paid.body.data.status).toBe("paid");
     expect(paid.body.data.paymentMethod).toBe("qris");
+    expect(paid.body.data.payment).toMatchObject({ status: "paid", method: "qris" });
 
     const shortComment = await customer
       .post(`${API}/reviews/workshop`)
@@ -326,11 +340,19 @@ describe("Service booking lifecycle", () => {
       .expect(201);
     expect(approved.body.data.status).toBe("completed");
 
-    const paid = await customer
+    const pending = await customer
       .post(`${API}/service-orders/${booking.id}/pay`)
       .send({ method: "va" })
       .expect(201);
+    expect(pending.body.data.status).toBe("completed");
+    expect(pending.body.data.payment).toMatchObject({ status: "pending", method: "va" });
+    expect(pending.body.data.payment.vaNumber).toBeTruthy();
+
+    const paid = await customer
+      .post(`${API}/service-orders/${booking.id}/simulate-paid`)
+      .expect(201);
     expect(paid.body.data.status).toBe("paid");
+    expect(paid.body.data.payment).toMatchObject({ status: "paid", method: "va" });
   });
 
   it("returns an over-estimate job to in_progress when the customer rejects it", async () => {
@@ -346,6 +368,74 @@ describe("Service booking lifecycle", () => {
     expect(rejected.body.data.status).toBe("in_progress");
   });
 
+  it("reuses one invoice payment until it is paid", async () => {
+    const booking = await inProgressBooking();
+    await workshop.agent
+      .post(`${API}/workshop/service-orders/${booking.id}/complete`)
+      .send({ items: [invoiceItem(120_000)], finalTotal: 120_000 })
+      .expect(201);
+
+    const first = await customer
+      .post(`${API}/service-orders/${booking.id}/pay`)
+      .send({ method: "qris" })
+      .expect(201);
+    const second = await customer
+      .post(`${API}/service-orders/${booking.id}/pay`)
+      .send({ method: "qris" })
+      .expect(201);
+    expect(second.body.data.payment.id).toBe(first.body.data.payment.id);
+    expect(second.body.data.payment.status).toBe("pending");
+
+    const paid = await customer
+      .post(`${API}/service-orders/${booking.id}/simulate-paid`)
+      .expect(201);
+    const again = await customer
+      .post(`${API}/service-orders/${booking.id}/simulate-paid`)
+      .expect(201);
+    expect(again.body.data.status).toBe("paid");
+    expect(again.body.data.payment.id).toBe(paid.body.data.payment.id);
+  });
+
+  it("expires an unpaid invoice and lets the customer retry", async () => {
+    const booking = await inProgressBooking();
+    await workshop.agent
+      .post(`${API}/workshop/service-orders/${booking.id}/complete`)
+      .send({ items: [invoiceItem(120_000)], finalTotal: 120_000 })
+      .expect(201);
+
+    const pending = await customer
+      .post(`${API}/service-orders/${booking.id}/pay`)
+      .send({ method: "va" })
+      .expect(201);
+    const paymentId = pending.body.data.payment.id;
+
+    const prisma = app.get(PrismaService);
+    await prisma.payment.update({
+      where: { id: paymentId },
+      data: { expiresAt: new Date(Date.now() - 1_000) },
+    });
+
+    const payments = app.get(PaymentsService);
+    const summary = await payments.expirePendingPayments();
+    expect(summary.serviceOrders).toBeGreaterThanOrEqual(1);
+
+    const expired = await customer.get(`${API}/service-orders/${booking.id}`).expect(200);
+    expect(expired.body.data.status).toBe("completed");
+    expect(expired.body.data.payment.status).toBe("expired");
+
+    const blocked = await customer
+      .post(`${API}/service-orders/${booking.id}/simulate-paid`)
+      .expect(409);
+    expect(blocked.body.error.code).toBe("PAYMENT_EXPIRED");
+
+    const retry = await customer
+      .post(`${API}/service-orders/${booking.id}/pay`)
+      .send({ method: "qris" })
+      .expect(201);
+    expect(retry.body.data.payment.id).toBe(paymentId);
+    expect(retry.body.data.payment.status).toBe("pending");
+  });
+
   it("records a cash payment and marks the service paid", async () => {
     const booking = await inProgressBooking();
     await workshop.agent
@@ -358,6 +448,11 @@ describe("Service booking lifecycle", () => {
       .expect(201);
     expect(cash.body.data.status).toBe("paid");
     expect(cash.body.data.paymentMethod).toBe("cash");
+    expect(cash.body.data.payment).toMatchObject({
+      provider: "cash",
+      method: "cash",
+      status: "paid",
+    });
   });
 
   it("enforces the cancellation window and blocks later transitions", async () => {

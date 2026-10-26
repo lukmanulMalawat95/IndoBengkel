@@ -4,6 +4,8 @@ import { PrismaService } from "../prisma/prisma.service";
 import { ApiError } from "../common/api-error";
 import { clamp, randomCode, uid } from "../common/ids";
 import { courierById, shippingCostFor, totalWeight } from "../common/shipping";
+import { PaymentsService } from "../payments/payments.service";
+import { isOnlinePaymentMethod } from "../payments/payment-provider";
 import {
   cartJson,
   finalPrice,
@@ -14,7 +16,10 @@ import {
 
 @Injectable()
 export class CommerceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly payments: PaymentsService,
+  ) {}
 
   // ------------------------------------------------------------------ cart
   async listCarts(userId: string) {
@@ -227,11 +232,17 @@ export class CommerceService {
     const total = subtotal + cost;
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
     const orderId = uid("ord");
+    const paymentId = uid("pay");
     const code = randomCode("ORD");
     const pickupCode = randomCode("", 6).replace("-", "").slice(0, 6);
-    const method = ["va", "bank_transfer", "qris"].includes(input.paymentMethod)
-      ? input.paymentMethod
-      : "va";
+    const requestedMethod = String(input.paymentMethod ?? "va");
+    const method = isOnlinePaymentMethod(requestedMethod) ? requestedMethod : "va";
+    const charge = await this.payments.createCharge({
+      paymentId,
+      amount: total,
+      method,
+      expiresAt,
+    });
 
     const result = await this.prisma.$transaction(async (tx) => {
       const order = await tx.order.create({
@@ -256,21 +267,15 @@ export class CommerceService {
           expiresAt,
           payment: {
             create: {
-              id: uid("pay"),
-              provider: "fake",
+              id: paymentId,
+              provider: charge.provider,
               method,
               amount: total,
               status: "pending",
-              providerRef: `FAKE-${randomCode("", 8).replace("-", "")}`,
-              vaNumber:
-                method === "va"
-                  ? `8808 ${Math.floor(1000 + Math.random() * 8999)} ${Math.floor(1000 + Math.random() * 8999)}`
-                  : null,
-              qrString:
-                method === "qris"
-                  ? `00020101021226${randomCode("", 8).replace("-", "")}5802ID`
-                  : null,
-              expiresAt,
+              providerRef: charge.providerRef,
+              vaNumber: charge.vaNumber ?? null,
+              qrString: charge.qrString ?? null,
+              expiresAt: charge.expiresAt,
             },
           },
         },
@@ -288,7 +293,7 @@ export class CommerceService {
         data: {
           id: uid("notif"),
           userId: workshop.ownerUserId,
-          type: "order_paid",
+          type: "order_created",
           title: "New shop order",
           body: `${user.fullName} placed a ${fulfillment === "expedition" ? "delivery" : "pickup"} order at ${workshop.name}.`,
           href: "/workshop/orders",
@@ -336,7 +341,7 @@ export class CommerceService {
           data: { stock: { increment: item.qty } },
         });
       }
-      await tx.payment.update({
+      await tx.payment.updateMany({
         where: { orderId: id },
         data: { status: "failed" },
       });
@@ -354,18 +359,68 @@ export class CommerceService {
   }
 
   async simulateOrderPayment(userId: string, user: any, id: string) {
-    const order = await this.prisma.order.findUnique({
+    this.payments.assertSimulationAllowed();
+
+    let order = await this.prisma.order.findUnique({
       where: { id },
       include: { payment: true },
     });
     if (!order) throw new ApiError("NOT_FOUND", "Order not found.", 404);
     await this.assertOrderAccess(user, order);
-    if (order.status !== "pending_payment") return orderJson(order);
+    if (order.status === "paid") return orderJson(order);
+    if (order.status !== "pending_payment") {
+      throw new ApiError("INVALID_TRANSITION", "This order can no longer be paid.", 409);
+    }
+    if (!order.payment) {
+      throw new ApiError("INVALID_TRANSITION", "This order has no payment to simulate.", 409);
+    }
+    if (order.payment.status === "paid") return orderJson(order);
+    if (order.payment.status !== "pending") {
+      throw new ApiError("INVALID_TRANSITION", "This payment is no longer pending.", 409);
+    }
+
+    const now = new Date();
+    if (order.payment.expiresAt <= now) {
+      await this.payments.expirePendingPayments(now);
+      throw new ApiError(
+        "PAYMENT_EXPIRED",
+        "The payment window has closed. Create a new order to try again.",
+        409,
+      );
+    }
 
     const result = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Payment" WHERE "id" = ${order.payment.id} FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${id} FOR UPDATE`;
+      const current = await tx.order.findUnique({
+        where: { id },
+        include: { payment: true },
+      });
+      if (!current) throw new ApiError("NOT_FOUND", "Order not found.", 404);
+      if (current.status === "paid") return current;
+      if (current.status !== "pending_payment") {
+        throw new ApiError("INVALID_TRANSITION", "This order can no longer be paid.", 409);
+      }
+      if (!current.payment) {
+        throw new ApiError("INVALID_TRANSITION", "This order has no payment to simulate.", 409);
+      }
+      if (current.payment.status === "paid") {
+        return tx.order.update({
+          where: { id },
+          data: { status: "paid", paidAt: current.payment.paidAt ?? new Date() },
+          include: { payment: true },
+        });
+      }
+      if (current.payment.status !== "pending") {
+        throw new ApiError("INVALID_TRANSITION", "This payment is no longer pending.", 409);
+      }
+      if (current.payment.expiresAt <= now) {
+        throw new ApiError("PAYMENT_EXPIRED", "The payment window has closed.", 409);
+      }
+
       const paidAt = new Date();
       await tx.payment.update({
-        where: { orderId: id },
+        where: { id: current.payment.id },
         data: { status: "paid", paidAt },
       });
       const updated = await tx.order.update({

@@ -72,7 +72,10 @@ export type NotificationType =
   | "estimate_approval"
   | "service_completed"
   | "service_paid"
+  | "service_payment_expired"
+  | "order_created"
   | "order_paid"
+  | "order_expired"
   | "order_ready"
   | "order_shipped"
   | "order_completed"
@@ -280,6 +283,7 @@ export interface ServiceOrder {
   paymentMethod?: PaymentMethod;
   cancelReason?: string;
   reviewId?: string;
+  payment?: Payment;
 }
 
 export interface CartItem {
@@ -305,7 +309,7 @@ export interface Payment {
   id: string;
   orderId?: string;
   serviceOrderId?: string;
-  provider: "fake" | "midtrans";
+  provider: "fake" | "midtrans" | "cash";
   method: PaymentMethod;
   amount: number;
   status: PaymentStatus;

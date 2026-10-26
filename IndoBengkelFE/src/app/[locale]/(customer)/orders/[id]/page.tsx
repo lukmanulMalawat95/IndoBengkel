@@ -352,17 +352,21 @@ export default function OrderDetailPage() {
                   <p className="mt-1 font-mono text-xs text-fg">{order.payment.vaNumber}</p>
                 </div>
               ) : null}
-              {order.status === "pending_payment" ? (
+              {order.status === "pending_payment" && order.payment.status === "pending" ? (
                 <>
                   <div className="mt-2 flex items-center gap-1.5 text-[11px] text-warning">
                     <Clock3 className="h-3.5 w-3.5" />
                     {t("orders.expiresIn", { minutes: remaining })}
                   </div>
-                  <Button className="mt-2 w-full" onClick={handlePay} disabled={pay.isPending}>
-                    {pay.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                    {t("orders.simulatePayment")}
-                  </Button>
-                  <p className="text-center text-[10px] text-faint">{t("orders.simulatePaymentHint")}</p>
+                  {order.payment.provider === "fake" ? (
+                    <>
+                      <Button className="mt-2 w-full" onClick={handlePay} disabled={pay.isPending}>
+                        {pay.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                        {t("orders.simulatePayment")}
+                      </Button>
+                      <p className="text-center text-[10px] text-faint">{t("orders.simulatePaymentHint")}</p>
+                    </>
+                  ) : null}
                 </>
               ) : null}
             </div>

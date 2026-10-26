@@ -40,6 +40,8 @@ jobs:
       DATABASE_URL: postgresql://indobengkel:indobengkel@localhost:5432/indobengkel?schema=public
       REDIS_URL: redis://localhost:6379/0
       NODE_ENV: test
+      PAYMENT_PROVIDER: fake
+      PAYMENT_EXPIRY_ENABLED: "false"
     defaults:
       run:
         working-directory: IndoBengkelBE

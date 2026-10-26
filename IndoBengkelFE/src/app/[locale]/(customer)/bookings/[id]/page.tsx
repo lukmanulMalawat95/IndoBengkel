@@ -42,10 +42,11 @@ import {
   usePayServiceOrder,
   useRejectEstimate,
   useServiceOrder,
+  useSimulateServicePayment,
   useStartConversation,
 } from "@/lib/api/hooks";
 import type { PaymentMethod, ServiceOrder } from "@/lib/api/types";
-import { formatCurrency, formatDateTime } from "@/lib/format";
+import { formatCurrency, formatDateTime, minutesUntil } from "@/lib/format";
 
 export default function BookingDetailPage() {
   const params = useParams<{ id: string }>();
@@ -58,6 +59,7 @@ export default function BookingDetailPage() {
   const approve = useApproveEstimate();
   const reject = useRejectEstimate();
   const pay = usePayServiceOrder();
+  const simulate = useSimulateServicePayment();
   const cancel = useCancelBooking();
   const startConversation = useStartConversation();
   const [approveOpen, setApproveOpen] = useState(false);
@@ -86,6 +88,9 @@ export default function BookingDetailPage() {
   const canCancel =
     ["requested", "confirmed"].includes(booking.status) &&
     new Date(booking.scheduledAt).getTime() - Date.now() > 2 * 60 * 60 * 1000;
+  const pendingPayment = booking.payment?.status === "pending" ? booking.payment : undefined;
+  const paymentExpired = booking.payment?.status === "expired";
+  const remaining = pendingPayment ? Math.max(0, minutesUntil(pendingPayment.expiresAt)) : 0;
 
   const handleChat = async () => {
     try {
@@ -99,7 +104,18 @@ export default function BookingDetailPage() {
   const handlePay = async (method: PaymentMethod) => {
     try {
       await pay.mutateAsync({ id: booking.id, method });
-      toast.success(t("toasts.invoicePaid"));
+      toast.success(
+        method === "cash" ? t("toasts.invoicePaid") : t("bookings.paymentCreated"),
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("toasts.error"));
+    }
+  };
+
+  const handleSimulate = async () => {
+    try {
+      await simulate.mutateAsync(booking.id);
+      toast.success(t("toasts.paymentSimulated"));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("toasts.error"));
     }
@@ -233,17 +249,83 @@ export default function BookingDetailPage() {
             </div>
             {booking.status === "completed" ? (
               <div className="border-t border-line p-4">
-                <p className="text-xs text-muted">{t("bookings.completedBody")}</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  <Button size="sm" onClick={() => handlePay("qris")} disabled={pay.isPending}>
-                    {pay.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                    {t("bookings.payOnline")}
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={() => handlePay("cash")} disabled={pay.isPending}>
-                    <Clock3 className="h-4 w-4" /> {t("bookings.payCash")}
-                  </Button>
-                </div>
-                <p className="mt-2 text-[10px] text-faint">{t("bookings.cashNote")}</p>
+                {pendingPayment ? (
+                  <div>
+                    <p className="text-sm font-medium text-fg">{t("bookings.paymentPendingTitle")}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted">
+                      {t("bookings.paymentPendingBody")}
+                    </p>
+                    <div className="mt-3 space-y-2 rounded-input border border-line bg-surface2/40 p-3 text-xs">
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted">{t("bookings.paymentMethod")}</span>
+                        <span className="text-fg">{paymentMethodLabel(pendingPayment.method, t)}</span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted">{t("common.status")}</span>
+                        <StatusBadge kind="payment" status={pendingPayment.status} />
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted">{t("common.total")}</span>
+                        <span className="font-medium text-fg">{formatCurrency(pendingPayment.amount)}</span>
+                      </div>
+                      {pendingPayment.vaNumber ? (
+                        <div className="rounded-input border border-line bg-surface p-2.5">
+                          <p className="text-[10px] uppercase tracking-[0.12em] text-faint">{t("checkout.va")}</p>
+                          <p className="mt-1 font-mono text-xs text-fg">{pendingPayment.vaNumber}</p>
+                        </div>
+                      ) : null}
+                      {pendingPayment.qrString ? (
+                        <div className="rounded-input border border-line bg-surface p-2.5">
+                          <p className="text-[10px] uppercase tracking-[0.12em] text-faint">{t("checkout.qris")}</p>
+                          <p className="mt-1 break-all font-mono text-[10px] text-fg">{pendingPayment.qrString}</p>
+                        </div>
+                      ) : null}
+                      <div className="flex items-center gap-1.5 text-[11px] text-warning">
+                        <Clock3 className="h-3.5 w-3.5" />
+                        {t("orders.expiresIn", { minutes: remaining })}
+                      </div>
+                    </div>
+                    {pendingPayment.provider === "fake" ? (
+                      <>
+                        <Button
+                          className="mt-3 w-full"
+                          size="sm"
+                          onClick={handleSimulate}
+                          disabled={simulate.isPending}
+                        >
+                          {simulate.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="h-4 w-4" />
+                          )}
+                          {t("orders.simulatePayment")}
+                        </Button>
+                        <p className="mt-2 text-center text-[10px] text-faint">
+                          {t("orders.simulatePaymentHint")}
+                        </p>
+                      </>
+                    ) : null}
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-xs text-muted">{t("bookings.completedBody")}</p>
+                    {paymentExpired ? (
+                      <p className="mt-2 rounded-input border border-warning/25 bg-warning/5 p-2 text-[11px] text-warning">
+                        {t("bookings.paymentExpired")}
+                      </p>
+                    ) : null}
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <Button size="sm" onClick={() => handlePay("qris")} disabled={pay.isPending}>
+                        {pay.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                        {t("bookings.payOnline")}
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => handlePay("cash")} disabled={pay.isPending}>
+                        <Clock3 className="h-4 w-4" /> {t("bookings.payCash")}
+                      </Button>
+                    </div>
+                    <p className="mt-2 text-[10px] text-faint">{t("bookings.cashNote")}</p>
+                  </>
+                )}
               </div>
             ) : null}
           </Card>
@@ -475,6 +557,16 @@ function buildTimeline(booking: ServiceOrder, t: ReturnType<typeof useTranslatio
     state: done(Boolean(booking.paidAt), booking.status === "completed"),
   });
   return items;
+}
+
+function paymentMethodLabel(
+  method: PaymentMethod,
+  t: ReturnType<typeof useTranslations>,
+) {
+  if (method === "va") return t("checkout.va");
+  if (method === "bank_transfer") return t("checkout.bank_transfer");
+  if (method === "qris") return t("checkout.qris");
+  return t("bookings.payCash");
 }
 
 function BookingStatusBanner({ booking }: { booking: ServiceOrder }) {

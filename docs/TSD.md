@@ -14,10 +14,10 @@
 |---|---|---|
 | FE | Seluruh layar customer/workshop, EN/ID, Night Shift/Day Shift, skeleton loading | — |
 | API | NestJS `/api/v1`: auth, katalog, kendaraan, booking, commerce, konsol bengkel, chat, notifikasi, demo reset, health | Swagger, email verification, webhook |
-| DB | PostgreSQL 16 + PostGIS 3.4 + Prisma, 15 model, migrasi berversi (`0_init`, `1_postgis_workshop_location`), seed deterministik (24 bengkel/23 aktif) | `email_outbox`, backup |
+| DB | PostgreSQL 16 + PostGIS 3.4 + Prisma, 16 model, migrasi berversi (`0_init`, `1_postgis_workshop_location`, `2_upload_ownership`, `3_service_order_payments`), seed deterministik (24 bengkel/23 aktif) | `email_outbox`, backup |
 | Auth | Cookie `ib_session` httpOnly + tabel `sessions`, bcrypt, CSRF + rate limit (Redis, fallback memory) | Access/refresh JWT rotation, verified guard |
 | Upload | `POST /api/uploads` → disk, session + MIME + magic bytes + 5 MB; owner dicatat di tabel `Upload` | Presigned S3/MinIO |
-| Bayar | Simulasi VA/QRIS/transfer + cash | Midtrans Core API + webhook signature |
+| Bayar | Fake provider (`PAYMENT_PROVIDER=fake`), VA/QRIS/transfer + cash, cron expiry | Midtrans Core API + webhook signature |
 | Chat | REST + refetch/polling | Socket.IO |
 | Geo | PostGIS KNN + radius + `open_now` di SQL (`geography` expression index) | pg_trgm, Photon geocoder |
 | Docker | `db`, `redis`, `backend`, `frontend`; healthcheck + volume upload | MinIO, Mailpit, Photon |
@@ -63,7 +63,7 @@
 
 Redis 7 dipakai untuk counter rate limit (bukan untuk Socket.IO atau email outbox). Runtime lokal belum memakai Socket.IO atau email outbox; chat memakai refetch/polling. Diagram di atas adalah arsitektur target, sedangkan baseline yang berjalan sekarang dijelaskan di tabel status dan §3.
 
-**Runtime yang berjalan.** Repo berisi `IndoBengkelFE` (Next.js 15) dan `IndoBengkelBE` (NestJS 11 + Prisma + PostgreSQL 16 + PostGIS 3.4 + Redis 7), dijalankan bersama lewat `docker-compose.yml`. FE memanggil `/api/v1` same-origin melalui rewrite Next ke `API_INTERNAL_URL`; auth memakai cookie `ib_session` httpOnly dan tabel `sessions`; data disimpan di PostgreSQL (bukan `localStorage`). Rate limit memakai counter Redis agar konsisten antar-replica, dengan fallback in-memory bila Redis tidak tersedia. Mode mock FE tetap ada (`NEXT_PUBLIC_USE_MOCK_API=true`) untuk demo tanpa backend. Upload lokal ditulis ke `public/uploads` dan disajikan lewat route handler `GET /api/uploads/[name]`. Pembayaran disimulasikan; MinIO, Mailpit, Socket.IO, dan Midtrans belum dijalankan.
+**Runtime yang berjalan.** Repo berisi `IndoBengkelFE` (Next.js 15) dan `IndoBengkelBE` (NestJS 11 + Prisma + PostgreSQL 16 + PostGIS 3.4 + Redis 7), dijalankan bersama lewat `docker-compose.yml`. FE memanggil `/api/v1` same-origin melalui rewrite Next ke `API_INTERNAL_URL`; auth memakai cookie `ib_session` httpOnly dan tabel `sessions`; data disimpan di PostgreSQL (bukan `localStorage`). Rate limit memakai counter Redis agar konsisten antar-replica, dengan fallback in-memory bila Redis tidak tersedia. Mode mock FE tetap ada (`NEXT_PUBLIC_USE_MOCK_API=true`) untuk demo tanpa backend. Upload lokal ditulis ke `public/uploads` dan disajikan lewat route handler `GET /api/uploads/[name]`. Pembayaran memakai fake provider sebagai default (`PAYMENT_PROVIDER=fake`) dan cron expiry tiap menit; MinIO, Mailpit, Socket.IO, dan Midtrans belum dijalankan.
 
 ---
 
@@ -75,7 +75,7 @@ IndoBengkel/
 ├─ docs/{PRD,FSD,TSD,PLAN}.md
 ├─ IndoBengkelBE/
 │  ├─ Dockerfile
-│  ├─ prisma/schema.prisma          15 model aktif
+│  ├─ prisma/schema.prisma          16 model aktif
 │  ├─ prisma/seed-data.json         snapshot seed dari FE
 │  ├─ src/
 │  │  ├─ main.ts / app.module.ts
@@ -83,7 +83,8 @@ IndoBengkel/
 │  │  ├─ common/                    auth guard, filter, serializers, utils
 │  │  ├─ auth/                      login, register, session, me, logout
 │  │  ├─ catalog/                   workshop + produk publik
-│  │  ├─ commerce/                  cart, order, payment simulasi, review
+│  │  ├─ commerce/                  cart, order, checkout, review
+│  │  ├─ payments/                  provider fake, charge, cron expiry
 │  │  ├─ vehicles/
 │  │  ├─ bookings/                  service order customer
 │  │  ├─ workshop/                  konsol: profil, montir, layanan, produk,
@@ -123,8 +124,8 @@ IndoBengkel/
 | Storage | `public/uploads` + route handler | MinIO/S3 presigned |
 | Auth | `sessions` + cookie `ib_session` | access/refresh JWT + CSRF |
 | Email | — | Mailpit, Resend/outbox |
-| Payment | Simulasi VA/QRIS/transfer + cash | Midtrans Core API |
-| Test | Jest + Supertest (50 default, 51 with Redis), Playwright (8 test), GitHub Actions CI | Coverage 70% + performance |
+| Payment | Fake provider, VA/QRIS/transfer + cash, cron expiry | Midtrans Core API |
+| Test | Jest + Supertest (66 default, 67 with Redis), Playwright (9 tests), GitHub Actions CI | Coverage 70% + performance |
 | Tooling | npm, ESLint, Prettier, Docker Compose, GitHub Actions | pnpm workspaces |
 
 **Catatan Next.js:** semua halaman yang butuh data user memakai `fetch` server-side dengan cookie diteruskan; mutasi lewat client component + TanStack Query.
@@ -133,7 +134,7 @@ IndoBengkel/
 
 ## 5. Model Data & Geo
 
-**Baseline yang berjalan (15 tabel):** `User`, `Session`, `Workshop`, `Mechanic`, `Service`, `Product`, `Vehicle`, `ServiceOrder`, `Cart`, `Order`, `Payment`, `Review`, `Conversation`, `Message`, `Notification`. Katalog dan identitas dinormalisasi; transaksi menyimpan snapshot JSON agar riwayat tidak berubah saat katalog diedit:
+**Baseline yang berjalan (16 tabel):** `User`, `Session`, `Workshop`, `Mechanic`, `Service`, `Product`, `Vehicle`, `ServiceOrder`, `Cart`, `Order`, `Payment`, `Review`, `Conversation`, `Message`, `Notification`, `Upload`. Katalog dan identitas dinormalisasi; transaksi menyimpan snapshot JSON agar riwayat tidak berubah saat katalog diedit:
 
 | Kolom snapshot | Isi |
 |---|---|
@@ -220,7 +221,7 @@ Catatan implementasi:
 - Error: `{ "error": { "code": "...", "message": "...", "details": [...] } }`; pesan BE saat ini berbahasa Inggris dan belum dilokalkan.
 - Validasi: `ValidationPipe({ whitelist: true, transform: true })` + DTO eksplisit.
 - Pagination: `page` (default 1), `perPage` (default 20, maks 100).
-- Idempotency: pembayaran simulasi menolak `paid` ganda; `POST /orders` memakai transaksi + cek stok.
+- Idempotency: simulasi pembayaran mengembalikan payment yang sudah `paid` tanpa transisi kedua; order `cancelled`/`expired` ditolak `409`; `POST /orders` memakai transaksi + cek stok.
 - Swagger belum dipasang.
 
 **Endpoint utama**
@@ -230,7 +231,7 @@ Catatan implementasi:
 | Auth | `POST /auth/login`, `/auth/register/customer`, `/auth/register/workshop`, `/auth/logout`; `GET /auth/me`, `/auth/refresh`; `PATCH /me/locale` |
 | Katalog | `GET /workshops`, `/workshops/:slug`, `/workshops/:id/availability`, `/products`, `/products/:slug` |
 | Kendaraan | `GET/POST /vehicles`, `GET/PATCH/DELETE /vehicles/:id` |
-| Booking | `GET/POST /service-orders`, `GET /service-orders/:id`, `POST .../cancel`, `.../approve-estimate`, `.../reject-estimate`, `.../pay` |
+| Booking | `GET/POST /service-orders`, `GET /service-orders/:id`, `POST .../cancel`, `.../approve-estimate`, `.../reject-estimate`, `.../pay`, `.../simulate-paid` (fake only) |
 | Commerce | `GET/POST /cart`, `POST /cart/items`, `PATCH/DELETE /cart/items/:id`, `DELETE /cart`; `GET/POST /orders`, `GET /orders/:id`, `POST .../cancel`, `.../pay`, `.../confirm-delivery` |
 | Review | `POST /reviews/product`, `POST /reviews/workshop` |
 | Konsol | `GET/PATCH /workshop/me`, `GET /workshop/dashboard`; CRUD `mechanics`, `services`, `products`; `GET /workshop/bookings` + `confirm`/`decline`/`no-show`; `.../service-orders/:id/start`/`complete`/`cash-paid`; `GET /workshop/orders` + `preparing`/`ready`/`ship`/`verify-pickup`; `GET /workshop/reviews` + `:id/reply` |
@@ -258,7 +259,7 @@ Catatan implementasi:
 
 ## 8. Alur Domain (Sequence)
 
-**Catatan baseline:** diagram di bawah adalah target dengan PostGIS, advisory lock, webhook, dan cron. Runtime lokal menjalankan transisi yang sama secara sederhana: Prisma transaction, cek status + stok, cookie sesi, pembayaran simulasi, dan refetch. Tidak ada job antrean; expiry order dihitung dari `expiresAt` saat dibaca.
+**Catatan baseline:** diagram di bawah adalah target dengan PostGIS, advisory lock, webhook, dan cron. Runtime lokal menjalankan transisi yang sama secara sederhana: Prisma transaction, cek status + stok, cookie sesi, pembayaran fake, dan refetch. Cron expiry pembayaran sudah berjalan tiap menit (lihat §9); belum ada job antrean, email worker, atau webhook.
 
 ### 8.1 Buat booking → confirm (kapasitas)
 
@@ -364,55 +365,61 @@ POST /conversations/:id/messages (REST, sumber kebenaran)
 
 ## 9. Konkurensi & Job
 
-**Baseline:** stok dicek dan dipotong dalam transaksi Prisma; pickup code diverifikasi dengan status order; tidak ada cron expiry/reminder/email. Tabel strategi di bawah adalah target.
+**Baseline:** stok dicek dan dipotong dalam transaksi Prisma; pickup code diverifikasi dengan status order; cron expiry pembayaran sudah berjalan. Reminder dan email worker belum ada. Tabel strategi di bawah adalah target.
 
 | Masalah | Solusi |
 |---|---|
 | Double booking slot | Advisory lock per `(workshop_id, scheduled_at)` + count dalam transaksi |
 | Oversell stok | `UPDATE ... WHERE stock >= qty` + cek affected rows |
-| Double payment | Unique `provider_ref`; transisi `paid` hanya dari `pending` |
+| Double payment | Unique `providerRef`; transisi `paid` hanya dari `pending`; simulasi idempotent |
 | Pickup ganda | `SELECT ... FOR UPDATE` + cek status |
 | Review ganda | Unique constraint di DB, tangkap `P2002` → 409 |
-| Expiry order | Cron 1 menit: `FOR UPDATE SKIP LOCKED`, update expired + restore stok |
+| Expiry order | Cron 1 menit: lock per `Payment`, update `expired` + restore stok |
 | Requested booking menumpuk | Tidak mengunci slot; owner menolak/konfirmasi; tidak ada auto-expire di v1 |
 | Email gagal | Outbox dengan retry+backoff |
 | Agregat rating | Update dalam transaksi yang sama dengan insert review |
 
-**Cron (in-process, `@nestjs/schedule`)**: `orders:expire` tiap menit, `email:flush` tiap 15 detik, `reminders:daily` 09.00 Asia/Jakarta, `payments:reconcile` tiap 5 menit (opsional, fake provider).
+**Cron (in-process, `@nestjs/schedule`)**: `PaymentsService.expireScheduled()` tiap menit. Job mengambil batch `Payment` pending yang lewat `expiresAt`, mengunci baris dengan `SELECT ... FOR UPDATE`, lalu:
+
+- order shop: status `expired`, stok item dikembalikan, customer dinotifikasi;
+- service invoice: payment `expired`, service tetap `completed` agar customer bisa memilih metode lagi, customer dinotifikasi.
+
+`PAYMENT_EXPIRY_ENABLED=false` mematikan cron (dipakai test). `email:flush`, `reminders:daily`, dan `payments:reconcile` belum diimplementasikan.
 
 ---
 
 ## 10. Pembayaran
 
-**Baseline:** `Payment` menyimpan metode (`va|transfer|qris`), status (`pending|paid`), nomor VA, dan `paidAt`; endpoint `POST /orders/:id/pay` atau `/service-orders/:id/pay` menandai lunas (simulasi). Owner bisa menandai service cash lunas. Tidak ada webhook, signature, retry, atau refund. Kontrak provider di bawah adalah target Midtrans.
+**Baseline (fake-first):** `Payment` bisa dimiliki `Order` (`orderId`) atau `ServiceOrder` (`serviceOrderId`); keduanya nullable dan unik. `providerRef` unik. Status: `pending|paid|expired|failed`. `provider` menyimpan `fake`, `cash`, atau nanti `midtrans`.
 
-Interface:
+Interface yang dipakai sekarang:
 
 ```ts
 interface PaymentProvider {
-  create(input: {
-    reference: string;        // order/service code
+  readonly name: string;
+  createCharge(input: {
+    paymentId: string;                 // id internal, dipakai sebagai reference
     amount: number;
     method: 'va' | 'bank_transfer' | 'qris';
-    customer: { name: string; email: string; phone: string };
-    expiresInMinutes: number;
+    expiresAt: Date;
   }): Promise<{
+    provider: string;
     providerRef: string;
-    status: 'pending';
-    instructions: { type: 'va' | 'qris' | 'manual'; bank?: string; vaNumber?: string; qrString?: string; expiresAt: string };
-  }>;
-  parseWebhook(headers, body): Promise<{
-    providerRef: string; status: 'paid' | 'failed' | 'expired'; paidAt?: string; raw: unknown;
+    vaNumber?: string | null;
+    qrString?: string | null;
+    expiresAt: Date;
   }>;
 }
 ```
 
-- **FakePaymentProvider**: menghasilkan `providerRef` acak, VA number `8808…`, QR string dummy, expiry 60 menit. Endpoint `POST /dev/payments/:id/simulate-paid` hanya terdaftar bila `PAYMENT_PROVIDER=fake`.
-- **MidtransProvider**: Core API `POST /v2/charge`; `bank_transfer` (bca/bni/bri/permata), `echannel` (Mandiri), `qris`. Signature webhook `SHA512(order_id + status_code + gross_amount + serverKey)`. Status dipetakan ke enum internal.
-- Satu payment `paid` per order/service; retry membuat payment baru dan menutup yang lama (`expired`).
+- **FakePaymentProvider** (default): tidak melakukan network call, menghasilkan `providerRef` acak, VA `8808…` untuk VA/transfer, QR dummy, expiry 60 menit. `PAYMENT_PROVIDER=midtrans` **gagal saat startup** sampai adapter dan webhook bertanda tangan tersedia — tidak ada fallback diam-diam.
+- **Shop order**: `POST /orders` memanggil provider sebelum transaksi, lalu menyimpan order + payment. `POST /orders/:id/pay` adalah simulasi fake: idempotent bila sudah `paid`, `409` bila order `cancelled`/`expired` atau window lewat. Order expired harus checkout ulang (order baru).
+- **Service invoice**: `POST /service-orders/:id/pay` dengan metode online membuat/memperbarui **satu** payment pending + instruksi; `POST /service-orders/:id/simulate-paid` menandai lunas. Payment expired bisa di-retry dengan baris yang sama (id tetap). Cash dicatat sebagai `Payment` provider `cash` dan langsung `paid` (owner lewat `cash-paid`, atau customer demo).
+- Endpoint simulasi hanya aktif untuk provider fake (`PaymentsService.assertSimulationAllowed()`).
+- **MidtransProvider (belum ada)**: Core API `POST /v2/charge`; `bank_transfer`, `echannel`, `qris`; webhook `SHA512(order_id + status_code + gross_amount + serverKey)`; status `settlement` / `capture+accept` → `paid`, `expire`/`cancel`/`deny`/`failure` → `expired` + restore stok.
 - Tidak ada refund (v1).
 
-**Catatan sandbox:** kredensial Midtrans hanya dipakai di fase 5; fake provider adalah default compose.
+**Catatan sandbox:** fake provider adalah default compose/local/CI. Kredensial Midtrans belum dipakai di fase ini; jangan pernah memakai fake untuk uang nyata.
 
 ---
 
@@ -539,8 +546,8 @@ Endpoint `POST /api/uploads` (route handler Next.js di `src/app/api/uploads/rout
 |---|---|---|
 | Static | `tsc --noEmit` (BE + FE), `nest build`, `next build` | ESLint di CI |
 | API smoke | health, login, `/auth/me`, katalog, dashboard, booking/order/chat/notification, upload | — |
-| E2E manual | Login owner/customer, semua halaman konsol + customer, cart → checkout → simulasi bayar, booking → owner confirm/start/complete/cash-paid, order preparing/ready/pickup, review reply, chat kirim, upload file + camera | — (Playwright otomatis sudah di CI) |
-| Unit/Integration | Jest + Supertest + skema terisolasi `indobengkel_test`; 50 test default, 51 saat `REDIS_URL` diset | Tambah cakupan modul lain |
+| E2E manual | Login owner/customer, semua halaman konsol + customer, cart → checkout → simulasi bayar, booking → owner confirm/start/complete/cash-paid atau online → simulate-paid, order preparing/ready/pickup, review reply, chat kirim, upload file + camera | — (Playwright otomatis sudah di CI) |
+| Unit/Integration | Jest + Supertest + skema terisolasi `indobengkel_test`; 66 test default, 67 saat `REDIS_URL` diset | Tambah cakupan modul lain |
 | Database | `prisma migrate deploy` + seed snapshot (reset tabel); test schema memakai `db push`; CI cek drift | Seed test terpisah |
 
 - Smoke API dijalankan terhadap stack Docker; upload diverifikasi dengan file 1200×800 dan URL `/api/uploads/...` tetap tampil setelah reload.

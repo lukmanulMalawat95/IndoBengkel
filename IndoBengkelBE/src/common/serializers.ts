@@ -210,6 +210,7 @@ export function serviceOrderJson(order: any) {
     paymentMethod: order.paymentMethod ?? undefined,
     cancelReason: order.cancelReason ?? undefined,
     reviewId: order.reviewId ?? undefined,
+    payment: paymentJson(order.payment),
   };
 }
 

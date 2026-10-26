@@ -53,6 +53,8 @@ services:
       PORT: 4000
       NODE_ENV: production
       CORS_ORIGIN: http://localhost:3000
+      PAYMENT_PROVIDER: fake
+      PAYMENT_EXPIRY_ENABLED: "true"
     ports:
       - "4000:4000"
     depends_on:

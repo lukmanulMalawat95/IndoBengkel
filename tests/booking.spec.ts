@@ -109,4 +109,24 @@ test.describe("Service booking, end to end", () => {
 
     await ownerContext.close();
   });
+
+  test("customer pays a completed invoice online and simulates settlement", async ({ page }) => {
+    await loginAsDemo(page, "customer");
+    await page.goto("/en/bookings");
+
+    await page.getByRole("button", { name: "Completed", exact: true }).click();
+    await page.getByRole("link", { name: /Details/ }).first().click();
+    await page.waitForURL(/\/bookings\/[^/]+$/);
+
+    await expect(page.getByRole("button", { name: "Pay online", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Pay online", exact: true }).click();
+
+    await expect(page.getByText("Complete your payment")).toBeVisible();
+    await expect(page.getByText(/^000201/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Simulate payment" })).toBeVisible();
+
+    await page.getByRole("button", { name: "Simulate payment" }).click();
+    await expect(page.getByRole("button", { name: "Simulate payment" })).toBeHidden();
+    await expect(page.getByText("Paid", { exact: true }).first()).toBeVisible();
+  });
 });

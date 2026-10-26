@@ -215,6 +215,8 @@ model ServiceOrder {
   cancelReason     String?
   reviewId         String?
 
+  payment Payment?
+
   @@index([customerId, createdAt])
   @@index([workshopId, scheduledAt])
   @@index([status])
@@ -274,19 +276,23 @@ model Order {
 }
 
 model Payment {
-  id             String    @id
-  orderId        String    @unique
-  order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  provider       String    @default("fake")
+  id             String        @id
+  orderId        String?       @unique
+  order          Order?        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  serviceOrderId String?       @unique
+  serviceOrder   ServiceOrder? @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  provider       String        @default("fake")
   method         String
   amount         Int
-  status         String    @default("pending")
-  providerRef    String
+  status         String        @default("pending")
+  providerRef    String        @unique
   vaNumber       String?
   qrString       String?
   expiresAt      DateTime
   paidAt         DateTime?
-  createdAt      DateTime  @default(now())
+  createdAt      DateTime      @default(now())
+
+  @@index([status, expiresAt])
 }
 
 model Review {

@@ -4,21 +4,30 @@ import { ApiError } from "../common/api-error";
 import { randomCode, uid } from "../common/ids";
 import { serviceOrderJson } from "../common/serializers";
 import { resolveSlot } from "../common/slots";
+import { PaymentsService } from "../payments/payments.service";
+import { isOnlinePaymentMethod } from "../payments/payment-provider";
 
 @Injectable()
 export class BookingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly payments: PaymentsService,
+  ) {}
 
   async list(userId: string) {
     const orders = await this.prisma.serviceOrder.findMany({
       where: { customerId: userId },
+      include: { payment: true },
       orderBy: { createdAt: "desc" },
     });
     return orders.map(serviceOrderJson);
   }
 
   async get(userId: string, user: any, id: string) {
-    const order = await this.prisma.serviceOrder.findUnique({ where: { id } });
+    const order = await this.prisma.serviceOrder.findUnique({
+      where: { id },
+      include: { payment: true },
+    });
     if (!order) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
     await this.assertAccess(user, order);
     return serviceOrderJson(order);
@@ -171,6 +180,7 @@ export class BookingsService {
         status: "cancelled",
         cancelReason: user.role === "customer" ? "Cancelled by customer" : "Cancelled by workshop",
       },
+      include: { payment: true },
     });
     if (user.role === "customer") {
       const workshop = await this.prisma.workshop.findUnique({ where: { id: order.workshopId } });
@@ -202,6 +212,7 @@ export class BookingsService {
       const updated = await tx.serviceOrder.update({
         where: { id },
         data: { status: "completed", completedAt: new Date() },
+        include: { payment: true },
       });
       await this.touchVehicle(tx, updated);
       return serviceOrderJson(updated);
@@ -222,41 +233,238 @@ export class BookingsService {
         status: "in_progress",
         mechanicNote: "Customer rejected the revised estimate. The workshop is reviewing the items.",
       },
+      include: { payment: true },
     });
     return serviceOrderJson(updated);
   }
 
-  async pay(userId: string, id: string, method: string) {
-    const order = await this.prisma.serviceOrder.findFirst({
-      where: { id, customerId: userId },
-    });
-    if (!order) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
-    if (order.status !== "completed") {
-      throw new ApiError("INVALID_TRANSITION", "This invoice is not ready to pay.", 409);
-    }
+  async pay(userId: string, id: string, methodInput: string) {
+    const method = String(methodInput ?? "qris");
     if (!["va", "bank_transfer", "qris", "cash"].includes(method)) {
       throw new ApiError("VALIDATION_ERROR", "Unsupported payment method.", 422);
     }
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.serviceOrder.update({
+
+    const order = await this.prisma.serviceOrder.findFirst({
+      where: { id, customerId: userId },
+      include: { payment: true },
+    });
+    if (!order) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
+    if (order.status === "paid") return serviceOrderJson(order);
+    if (order.status !== "completed") {
+      throw new ApiError("INVALID_TRANSITION", "This invoice is not ready to pay.", 409);
+    }
+
+    if (method === "cash") return this.payCash(userId, id);
+    if (!isOnlinePaymentMethod(method)) {
+      throw new ApiError("VALIDATION_ERROR", "Unsupported payment method.", 422);
+    }
+
+    const now = new Date();
+    if (order.payment?.status === "pending" && order.payment.expiresAt > now) {
+      return serviceOrderJson(order);
+    }
+
+    const amount = order.finalTotal ?? order.estimatedTotal;
+    if (amount <= 0) {
+      throw new ApiError("VALIDATION_ERROR", "The invoice has no amount to pay.", 422);
+    }
+
+    const paymentId = order.payment?.id ?? uid("pay");
+    const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
+    const charge = await this.payments.createCharge({
+      paymentId,
+      amount,
+      method,
+      expiresAt,
+    });
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "ServiceOrder" WHERE "id" = ${id} FOR UPDATE`;
+      const current = await tx.serviceOrder.findUnique({
         where: { id },
-        data: { status: "paid", paymentMethod: method, paidAt: new Date() },
+        include: { payment: true },
       });
-      await this.touchVehicle(tx, updated);
-      const workshop = await tx.workshop.findUnique({ where: { id: updated.workshopId } });
-      if (workshop) {
-        await tx.notification.create({
-          data: {
-            id: uid("notif"),
-            userId: workshop.ownerUserId,
-            type: "service_paid",
-            title: "Service paid",
-            body: `${updated.customerName} paid ${updated.code}.`,
-            href: `/workshop/service-orders/${updated.id}`,
-          },
+      if (!current) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
+      if (current.status === "paid") return current;
+      if (current.status !== "completed") {
+        throw new ApiError("INVALID_TRANSITION", "This invoice is not ready to pay.", 409);
+      }
+      if (current.payment?.status === "pending" && current.payment.expiresAt > new Date()) {
+        return current;
+      }
+
+      const data = {
+        provider: charge.provider,
+        method,
+        amount,
+        status: "pending",
+        providerRef: charge.providerRef,
+        vaNumber: charge.vaNumber ?? null,
+        qrString: charge.qrString ?? null,
+        expiresAt: charge.expiresAt,
+        paidAt: null,
+      };
+      if (current.payment) {
+        await tx.payment.update({ where: { id: current.payment.id }, data });
+      } else {
+        await tx.payment.create({
+          data: { id: paymentId, serviceOrderId: id, ...data },
         });
       }
-      return serviceOrderJson(updated);
+      return tx.serviceOrder.findUnique({ where: { id }, include: { payment: true } });
+    });
+
+    return serviceOrderJson(updated);
+  }
+
+  async simulatePaid(userId: string, id: string) {
+    this.payments.assertSimulationAllowed();
+
+    let order = await this.prisma.serviceOrder.findFirst({
+      where: { id, customerId: userId },
+      include: { payment: true },
+    });
+    if (!order) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
+    if (order.status === "paid") return serviceOrderJson(order);
+    if (order.status !== "completed") {
+      throw new ApiError("INVALID_TRANSITION", "This invoice is not ready to pay.", 409);
+    }
+    if (!order.payment) {
+      throw new ApiError("INVALID_TRANSITION", "Create a payment first.", 409);
+    }
+    if (order.payment.status === "paid") return serviceOrderJson(order);
+    if (order.payment.status === "expired") {
+      throw new ApiError(
+        "PAYMENT_EXPIRED",
+        "The payment window has closed. Choose a method to try again.",
+        409,
+      );
+    }
+    if (order.payment.status !== "pending") {
+      throw new ApiError("INVALID_TRANSITION", "This payment is no longer pending.", 409);
+    }
+
+    const now = new Date();
+    if (order.payment.expiresAt <= now) {
+      await this.payments.expirePendingPayments(now);
+      throw new ApiError(
+        "PAYMENT_EXPIRED",
+        "The payment window has closed. Choose a method to try again.",
+        409,
+      );
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // Lock the parent first, matching `pay`/`payCash`, so a concurrent
+      // settlement and cash recording cannot deadlock on the payment row.
+      await tx.$queryRaw`SELECT "id" FROM "ServiceOrder" WHERE "id" = ${id} FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id" FROM "Payment" WHERE "id" = ${order.payment.id} FOR UPDATE`;
+      const current = await tx.serviceOrder.findUnique({
+        where: { id },
+        include: { payment: true },
+      });
+      if (!current) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
+      if (current.status === "paid") return current;
+      if (current.status !== "completed") {
+        throw new ApiError("INVALID_TRANSITION", "This invoice is not ready to pay.", 409);
+      }
+      if (!current.payment) {
+        throw new ApiError("INVALID_TRANSITION", "Create a payment first.", 409);
+      }
+      if (current.payment.status !== "pending") {
+        if (current.payment.status === "paid") return current;
+        if (current.payment.status === "expired") {
+          throw new ApiError("PAYMENT_EXPIRED", "The payment window has closed.", 409);
+        }
+        throw new ApiError("INVALID_TRANSITION", "This payment is no longer pending.", 409);
+      }
+      if (current.payment.expiresAt <= now) {
+        throw new ApiError("PAYMENT_EXPIRED", "The payment window has closed.", 409);
+      }
+
+      const paidAt = new Date();
+      await tx.payment.update({
+        where: { id: current.payment.id },
+        data: { status: "paid", paidAt },
+      });
+      const paid = await tx.serviceOrder.update({
+        where: { id },
+        data: {
+          status: "paid",
+          paymentMethod: current.payment.method,
+          paidAt,
+        },
+        include: { payment: true },
+      });
+      await this.touchVehicle(tx, paid);
+      await this.notifyPaid(tx, paid);
+      return paid;
+    });
+
+    return serviceOrderJson(updated);
+  }
+
+  private async payCash(userId: string, id: string) {
+    const paidAt = new Date();
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "ServiceOrder" WHERE "id" = ${id} FOR UPDATE`;
+      const current = await tx.serviceOrder.findUnique({
+        where: { id },
+        include: { payment: true },
+      });
+      if (!current || current.customerId !== userId) {
+        throw new ApiError("NOT_FOUND", "Booking not found.", 404);
+      }
+      if (current.status === "paid") return current;
+      if (current.status !== "completed") {
+        throw new ApiError("INVALID_TRANSITION", "This invoice is not ready to pay.", 409);
+      }
+
+      const amount = current.finalTotal ?? current.estimatedTotal;
+      const data = {
+        provider: "cash",
+        method: "cash",
+        amount,
+        status: "paid",
+        providerRef: uid("cash"),
+        vaNumber: null,
+        qrString: null,
+        expiresAt: paidAt,
+        paidAt,
+      };
+      if (current.payment) {
+        await tx.payment.update({ where: { id: current.payment.id }, data });
+      } else {
+        await tx.payment.create({
+          data: { id: uid("pay"), serviceOrderId: id, ...data },
+        });
+      }
+
+      const paid = await tx.serviceOrder.update({
+        where: { id },
+        data: { status: "paid", paymentMethod: "cash", paidAt },
+        include: { payment: true },
+      });
+      await this.touchVehicle(tx, paid);
+      await this.notifyPaid(tx, paid);
+      return paid;
+    });
+
+    return serviceOrderJson(updated);
+  }
+
+  private async notifyPaid(tx: any, order: any) {
+    const workshop = await tx.workshop.findUnique({ where: { id: order.workshopId } });
+    if (!workshop) return;
+    await tx.notification.create({
+      data: {
+        id: uid("notif"),
+        userId: workshop.ownerUserId,
+        type: "service_paid",
+        title: "Service paid",
+        body: `${order.customerName} paid ${order.code}.`,
+        href: `/workshop/service-orders/${order.id}`,
+      },
     });
   }
 
