@@ -27,7 +27,7 @@
 **Belum (target produksi):**
 
 - Midtrans + webhook, email outbox/Mailpit, Socket.IO, presigned S3/MinIO.
-- Multi-foto produk, kepemilikan file upload di DB, laporan lintas periode lanjutan.
+- Multi-foto produk, laporan lintas periode lanjutan.
 
 Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerjaan yang sudah selesai. Baseline lokal tidak menggantikan hardening produksi.
 
@@ -238,7 +238,7 @@ Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerj
 
 **Gate:** tidak ada input URL gambar; hasil upload tampil setelah reload; kontras AA; typecheck bersih.
 
-**Catatan:** endpoint upload belum ber-auth dan menulis ke disk lokal (volume Docker). Di produksi, ganti dengan presigned S3/MinIO dan tambahkan guard kepemilikan.
+**Catatan:** endpoint upload sudah session-gated dan menulis ke disk lokal (volume Docker); kepemilikan file dicatat di tabel `Upload` dan referensi lintas akun ditolak. Di produksi, ganti dengan presigned S3/MinIO.
 
 ---
 
@@ -345,6 +345,24 @@ Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerj
 
 ---
 
+## 11h. Booking, Review & Upload Contract Gaps ✅ Selesai
+
+**Tujuan:** menutup empat celah kontrak yang sebelumnya hanya didokumentasikan di `docs/TESTING.md`.
+
+| ID | Task | Detail |
+|---|---|---|
+| T11h.1 | Slot bersama | `src/common/slots.ts` menjadi satu sumber aturan slot (zona waktu bengkel via `Intl`, jam buka, closure, kelipatan jam); availability, create, dan confirm memakainya |
+| T11h.2 | Validasi booking | Create menolak timestamp tidak bulat (`VALIDATION_ERROR`), di luar jam buka/closure (`WORKSHOP_CLOSED`), dan slot penuh (`SLOT_FULL`) di dalam transaksi dengan lock baris `Workshop` |
+| T11h.3 | Confirm | `POST /workshop/bookings/:id/confirm` mengunci workshop, membaca order di dalam transaksi, dan menghitung ulang `confirmed`/`in_progress` pada slot sebelum update |
+| T11h.4 | Review | Komentar opsional, tetapi jika diisi wajib 10–500 karakter di kedua jalur review; dialog FE memakai batas yang sama |
+| T11h.5 | Upload | Model `Upload` (owner, name, mime, size) + `POST /api/v1/uploads`; route FE mendaftarkan file setelah menulis; interceptor global menolak referensi `/api/uploads/...` milik akun lain |
+| T11h.6 | Test | Suite `uploads` baru (6 test); booking-lifecycle menguji jam tutup/closure/slot tidak bulat/kapasitas saat confirm; review panjang komentar di booking + shop |
+| T11h.7 | Verifikasi | 61 test API hijau (1 Redis skip), 8 E2E browser hijau, `migrate diff` bersih, stack Docker di-rebuild |
+
+**Catatan:** lock `SELECT ... FOR UPDATE` pada baris workshop membuat dua konfirmasi bersamaan tidak bisa mengambil slot terakhir; `requested` tetap tidak memakai kapasitas.
+
+---
+
 ## 12. Milestone & Demo
 
 | Milestone | Isi demo |
@@ -415,7 +433,7 @@ F8 (UI + upload) ──▶ F9 (API + DB + Docker) ──▶ F1–F7 hardening pr
 | Prioritas | Item |
 |---|---|
 | P1 | Midtrans + webhook, email outbox/Mailpit, Socket.IO realtime |
-| P1 | Presigned S3/MinIO + guard kepemilikan upload + multi-foto produk |
+| P1 | Presigned S3/MinIO + multi-foto produk |
 | P1 | Refund & pembatalan setelah bayar; ledger payout; halaman payout |
 | P1 | Pengiriman lokal + tarif berat (motor/pickup/truk) |
 | P1 | Approval bengkel + verifikasi dokumen |

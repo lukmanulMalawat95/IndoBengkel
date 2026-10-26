@@ -36,8 +36,9 @@ test and exercise the distributed limiter (CI does both).
 |---|---|
 | `auth.e2e-spec.ts` | Register/login/logout, duplicate email, short password, session cookie, `me`, locale, public vs guarded routes, email verification |
 | `discovery.e2e-spec.ts` | Active-only catalogue, PostGIS distance ordering + haversine parity, radius/type/rating/name/`openNow` filters (SQL parity with the serialized flag), pagination meta incl. pages beyond the last, workshop detail, draft hidden + 404, availability slots, capacity reflected after confirmation |
-| `booking-lifecycle.e2e-spec.ts` | Booking snapshot and validation, vehicle-type mismatch, draft workshop, confirm → start → complete → pay, odometer only changes on completion, 150% approval, reject → in_progress, cash payment, cancellation window, decline, no-show, mechanic required |
-| `shop-order.e2e-spec.ts` | Cross-workshop cart ownership, quantity clamp, stock reservation/restore, pickup code verification, product reviews locked until completed, weight-based shipping, tracking required, delivery confirmation, empty cart, out of stock |
+| `booking-lifecycle.e2e-spec.ts` | Booking snapshot and validation, hourly-slot/opening-hours/closure rules, vehicle-type mismatch, draft workshop, confirm → start → complete → pay, capacity re-checked on confirmation, odometer only changes on completion, 150% approval, reject → in_progress, cash payment, cancellation window, decline, no-show, mechanic required |
+| `shop-order.e2e-spec.ts` | Cross-workshop cart ownership, quantity clamp, stock reservation/restore, pickup code verification, product reviews locked until completed + comment length, weight-based shipping, tracking required, delivery confirmation, empty cart, out of stock |
+| `uploads.e2e-spec.ts` | Upload metadata validation, owner recorded on upload, idempotent re-registration, name conflicts across accounts, owner-only references on vehicles and workshop profiles, external URLs untouched |
 | `messaging.e2e-spec.ts` | Conversation uniqueness, message validation, two-sided delivery, unread count, read receipts, cross-workshop isolation, notifications |
 | `authorization.e2e-spec.ts` | IDOR on bookings, vehicles and catalogue, customer blocked from the workshop console, anonymous requests rejected |
 | `security.e2e-spec.ts` | Cookie flags, CSRF 403/201, login 429 + `Retry-After` (Redis path when `REDIS_URL` is set) |
@@ -113,7 +114,7 @@ behaviour.
 | CSRF | Double-submit cookie `ib_csrf` + `X-CSRF-Token` on every authenticated mutation. Bootstrap endpoints (login, register, reset) are exempt; logout and purchases are not. |
 | Session cookie | `ib_session`, httpOnly, SameSite=Lax, 7-day max age; `Secure` when `COOKIE_SECURE=true`. |
 | Rate limit | Fixed window per IP (1200/min globally) plus tighter per-route buckets: login/register 10/min per IP+email, chat send 30/min, reviews 10/min, demo reset 3/min. Counters live in Redis when `REDIS_URL` is set (shared across replicas) and in process memory otherwise. |
-| Uploads | `POST /api/uploads` validates the session against `GET /auth/me`, enforces 5 MB and jpg/png/webp magic bytes, randomises the filename. |
+| Uploads | `POST /api/uploads` validates the session against `GET /auth/me`, enforces 5 MB and jpg/png/webp magic bytes, randomises the filename, then records the owner through `POST /api/v1/uploads`. Every authenticated mutation rejects `/api/uploads/...` references the caller does not own (`UPLOAD_NOT_OWNED`). |
 | Headers | Helmet (CSP off for the JSON API, CORP cross-origin); CORS restricted to `CORS_ORIGIN` and `X-CSRF-Token`. |
 
 Relevant environment variables: `COOKIE_SECURE`, `TRUST_PROXY`,
@@ -124,16 +125,16 @@ security suite exercises the Redis store; CI starts a Redis 7 service for this.
 
 These are intentional baseline limitations, not test failures:
 
-- `POST /workshop/bookings/:id/confirm` does not re-check hourly capacity, so
-  two customers can be confirmed into the same slot. Availability does count
-  confirmed orders, and the UI shows the slot as full.
-- Booking creation accepts any future timestamp; opening hours and closures are
-  only enforced by `GET /workshops/:id/availability`.
 - Rate limits are shared through Redis when `REDIS_URL` is set. If Redis is
   unreachable, the guard falls back to per-process memory so the API stays
   available; during a sustained outage each replica enforces its own counters.
-- Uploads are session-gated and content-sniffed, but the database does not record
-  which user owns a file; another signed-in user who learns a URL can reference
-  it on their own record.
-- Review comment length is not validated (10–500 in the spec).
 - Chat is REST + refetch; no Socket.IO, so there is no realtime assertion.
+- Uploads are stored on the web tier's local disk, not an object store; the
+  ownership record makes the URL safe to reference, but the file itself is not
+  deduplicated or garbage-collected.
+
+The booking, review and upload rules that used to be documented here as gaps now
+have regression tests: hourly slots + closures (`booking-lifecycle`), capacity
+re-checked inside the confirmation transaction (`booking-lifecycle`), review
+comment length (`booking-lifecycle`, `shop-order`) and upload ownership
+(`uploads`).

@@ -429,6 +429,7 @@ export class CommerceService {
     if (!item) throw new ApiError("NOT_FOUND", "Order item not found.", 404);
     if (item.reviewed) throw new ApiError("ALREADY_REVIEWED", "This item is already reviewed.", 409);
     const rating = this.rating(input.rating);
+    const comment = this.comment(input.comment);
 
     return this.prisma.$transaction(async (tx) => {
       const review = await tx.review.create({
@@ -440,7 +441,7 @@ export class CommerceService {
           orderId: order.id,
           productId: input.productId,
           rating,
-          comment: String(input.comment ?? ""),
+          comment,
           tags: Array.isArray(input.tags) ? input.tags : [],
           status: "published",
         },
@@ -477,6 +478,7 @@ export class CommerceService {
     const workshop = await this.prisma.workshop.findUnique({ where: { id: order.workshopId } });
     if (!workshop) throw new ApiError("NOT_FOUND", "Workshop not found.", 404);
     const rating = this.rating(input.rating);
+    const comment = this.comment(input.comment);
 
     return this.prisma.$transaction(async (tx) => {
       const review = await tx.review.create({
@@ -487,7 +489,7 @@ export class CommerceService {
           workshopId: workshop.id,
           serviceOrderId: order.id,
           rating,
-          comment: String(input.comment ?? ""),
+          comment,
           tags: Array.isArray(input.tags) ? input.tags : [],
           status: "published",
         },
@@ -534,6 +536,20 @@ export class CommerceService {
       throw new ApiError("VALIDATION_ERROR", "Rating must be between 1 and 5.", 422);
     }
     return rating;
+  }
+
+  /** Review comments are optional, but a written one must be 10–500 chars. */
+  private comment(value: unknown) {
+    const comment = String(value ?? "").trim();
+    if (comment.length === 0) return "";
+    if (comment.length < 10 || comment.length > 500) {
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        "Review comment must be between 10 and 500 characters.",
+        422,
+      );
+    }
+    return comment;
   }
 
   private async assertOrderAccess(user: any, order: any) {

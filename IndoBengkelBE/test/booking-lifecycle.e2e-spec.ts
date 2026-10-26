@@ -6,6 +6,9 @@ import {
   createBooking,
   createVehicle,
   inHours,
+  nextOpenSlot,
+  nextSlotAfter,
+  openAllDay,
   registerCustomer,
   registerWorkshop,
   WorkshopFixture,
@@ -19,6 +22,24 @@ const invoiceItem = (price: number, name = "Jasa servis") => ({
   subtotal: price,
 });
 
+function jakartaDateKey(offsetDays: number) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(Date.now() + offsetDays * 86_400_000));
+}
+
+function nextOpenDay(offsetDays = 2) {
+  for (let offset = offsetDays; offset < offsetDays + 10; offset += 1) {
+    const key = jakartaDateKey(offset);
+    const day = new Date(`${key}T12:00:00+07:00`).getUTCDay();
+    if (day !== 0) return key;
+  }
+  throw new Error("No open day found within 10 days");
+}
+
 describe("Service booking lifecycle", () => {
   let app: INestApplication;
   let workshop: WorkshopFixture;
@@ -28,6 +49,13 @@ describe("Service booking lifecycle", () => {
   beforeAll(async () => {
     app = await createApp();
     workshop = await registerWorkshop(app, { servicePrice: 100_000 });
+    // Most tests exercise lifecycle rules rather than opening hours, so this
+    // workshop accepts any hourly slot; slot/closure rules get their own tests.
+    await openAllDay(workshop.agent);
+    await workshop.agent
+      .patch(`${API}/workshop/me`)
+      .send({ slotCapacityPerHour: 50 })
+      .expect(200);
     const registered = await registerCustomer(app);
     customer = registered.agent;
     const vehicle = await createVehicle(customer, { odometerKm: 10_000 });
@@ -112,6 +140,80 @@ describe("Service booking lifecycle", () => {
     expect(noServices.body.error.code).toBe("VALIDATION_ERROR");
   });
 
+  it("only accepts hourly slots inside opening hours and outside closures", async () => {
+    const shop = await registerWorkshop(app);
+    const date = nextOpenDay();
+    const base = {
+      workshopId: shop.workshop.id,
+      vehicleId,
+      serviceIds: [shop.serviceId],
+    };
+
+    const outside = await newBooking({
+      ...base,
+      scheduledAt: new Date(`${date}T03:00:00+07:00`).toISOString(),
+    });
+    expect(outside.status).toBe(422);
+    expect(outside.body.error.code).toBe("WORKSHOP_CLOSED");
+
+    const misaligned = await newBooking({
+      ...base,
+      scheduledAt: new Date(`${date}T10:30:00+07:00`).toISOString(),
+    });
+    expect(misaligned.status).toBe(422);
+    expect(misaligned.body.error.code).toBe("VALIDATION_ERROR");
+
+    await shop.agent
+      .patch(`${API}/workshop/me`)
+      .send({ closures: [{ id: "closure-e2e", date, reason: "Stock take" }] })
+      .expect(200);
+    const closed = await newBooking({
+      ...base,
+      scheduledAt: new Date(`${date}T10:00:00+07:00`).toISOString(),
+    });
+    expect(closed.status).toBe(422);
+    expect(closed.body.error.code).toBe("WORKSHOP_CLOSED");
+
+    const open = await newBooking({
+      ...base,
+      scheduledAt: new Date(`${nextOpenDay(3)}T10:00:00+07:00`).toISOString(),
+    });
+    expect(open.status).toBe(201);
+  });
+
+  it("re-checks hourly capacity when a booking is confirmed", async () => {
+    const shop = await registerWorkshop(app);
+    await openAllDay(shop.agent);
+    const scheduledAt = new Date(`${nextOpenDay()}T10:00:00+07:00`).toISOString();
+    const base = {
+      workshopId: shop.workshop.id,
+      vehicleId,
+      serviceIds: [shop.serviceId],
+      scheduledAt,
+    };
+
+    // Requested bookings do not lock capacity, so both requests are accepted.
+    const first = await newBooking(base);
+    const second = await newBooking(base);
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+
+    await shop.agent
+      .post(`${API}/workshop/bookings/${first.body.data.id}/confirm`)
+      .send({ estimatedTotal: 100_000 })
+      .expect(201);
+
+    const blocked = await shop.agent
+      .post(`${API}/workshop/bookings/${second.body.data.id}/confirm`)
+      .send({ estimatedTotal: 100_000 })
+      .expect(409);
+    expect(blocked.body.error.code).toBe("SLOT_FULL");
+
+    const full = await newBooking(base);
+    expect(full.status).toBe(409);
+    expect(full.body.error.code).toBe("SLOT_FULL");
+  });
+
   it("rejects a booking for a workshop of the other vehicle type", async () => {
     const carWorkshop = await registerWorkshop(app, { type: "mobil" });
     const response = await newBooking({ workshopId: carWorkshop.workshop.id });
@@ -159,6 +261,18 @@ describe("Service booking lifecycle", () => {
       .expect(201);
     expect(paid.body.data.status).toBe("paid");
     expect(paid.body.data.paymentMethod).toBe("qris");
+
+    const shortComment = await customer
+      .post(`${API}/reviews/workshop`)
+      .send({ serviceOrderId: booking.id, rating: 5, comment: "Bagus" })
+      .expect(422);
+    expect(shortComment.body.error.code).toBe("VALIDATION_ERROR");
+
+    const longComment = await customer
+      .post(`${API}/reviews/workshop`)
+      .send({ serviceOrderId: booking.id, rating: 5, comment: "x".repeat(501) })
+      .expect(422);
+    expect(longComment.body.error.code).toBe("VALIDATION_ERROR");
 
     const review = await customer
       .post(`${API}/reviews/workshop`)
@@ -247,14 +361,14 @@ describe("Service booking lifecycle", () => {
   });
 
   it("enforces the cancellation window and blocks later transitions", async () => {
-    const early = await newBooking({ scheduledAt: inHours(6).toISOString() });
+    const early = await newBooking({ scheduledAt: nextSlotAfter(6).toISOString() });
     expect(early.status).toBe(201);
     const cancelled = await customer
       .post(`${API}/service-orders/${early.body.data.id}/cancel`)
       .expect(201);
     expect(cancelled.body.data.status).toBe("cancelled");
 
-    const late = await newBooking({ scheduledAt: inHours(1.5).toISOString() });
+    const late = await newBooking({ scheduledAt: nextSlotAfter(1.01).toISOString() });
     expect(late.status).toBe(201);
     const blocked = await customer
       .post(`${API}/service-orders/${late.body.data.id}/cancel`)

@@ -16,7 +16,7 @@
 | API | NestJS `/api/v1`: auth, katalog, kendaraan, booking, commerce, konsol bengkel, chat, notifikasi, demo reset, health | Swagger, email verification, webhook |
 | DB | PostgreSQL 16 + PostGIS 3.4 + Prisma, 15 model, migrasi berversi (`0_init`, `1_postgis_workshop_location`), seed deterministik (24 bengkel/23 aktif) | `email_outbox`, backup |
 | Auth | Cookie `ib_session` httpOnly + tabel `sessions`, bcrypt, CSRF + rate limit (Redis, fallback memory) | Access/refresh JWT rotation, verified guard |
-| Upload | `POST /api/uploads` → disk, session + MIME + magic bytes + 5 MB | Presigned S3/MinIO, kepemilikan file di DB |
+| Upload | `POST /api/uploads` → disk, session + MIME + magic bytes + 5 MB; owner dicatat di tabel `Upload` | Presigned S3/MinIO |
 | Bayar | Simulasi VA/QRIS/transfer + cash | Midtrans Core API + webhook signature |
 | Chat | REST + refetch/polling | Socket.IO |
 | Geo | PostGIS KNN + radius + `open_now` di SQL (`geography` expression index) | pg_trgm, Photon geocoder |
@@ -266,19 +266,31 @@ Catatan implementasi:
 Customer            API                       DB
    │ POST /service-orders │                    │
    │─────────────────────▶│ validasi role, email, kendaraan, tipe
-   │                      │───────────────────▶│ INSERT service_orders(status=requested)
+   │                      │ resolveSlot: jam buka + closure + kelipatan jam
+   │                      │ BEGIN
+   │                      │ SELECT ... FROM "Workshop" FOR UPDATE
+   │                      │ SELECT count(*) status IN (confirmed,in_progress) pada slot
+   │                      │  count >= capacity ? → 409 SLOT_FULL (rollback)
+   │                      │ INSERT service_orders(status=requested)
+   │                      │ COMMIT
    │◀─────────────────────│ 201                │
    │                      │                    │
 Owner                │ POST /:id/confirm      │
    │─────────────────────▶│ BEGIN              │
-   │                      │ pg_advisory_xact_lock(hash(workshop||slot))
-   │                      │ SELECT count(*) status IN (confirmed,in_progress)
+   │                      │ SELECT ... FROM "Workshop" FOR UPDATE
+   │                      │ SELECT order (status requested)
+   │                      │ SELECT count(*) status IN (confirmed,in_progress) pada slot
    │                      │  count >= capacity ? → 409 SLOT_FULL (rollback)
    │                      │ UPDATE status=confirmed, estimated_total
-   │                      │ INSERT service_order_events
    │                      │ COMMIT
    │◀─────────────────────│ 200 + notifikasi
 ```
+
+`resolveSlot` (`src/common/slots.ts`) memakai zona waktu bengkel (`timezone`, default
+`Asia/Jakarta`) dan menolak timestamp yang bukan kelipatan jam, hari tutup,
+closure, atau di luar jam buka. Lock baris `Workshop` menyerialkan create dan
+confirm untuk bengkel yang sama, sehingga dua permintaan bersamaan tidak bisa
+mengambil slot terakhir; `requested` tidak memakai kapasitas.
 
 ### 8.2 Checkout (stok)
 
@@ -427,13 +439,14 @@ Endpoint `POST /api/uploads` (route handler Next.js di `src/app/api/uploads/rout
 | Aspek | Nilai |
 |---|---|
 | Tipe diterima | `image/jpeg`, `image/png`, `image/webp`; selain itu `415 UNSUPPORTED_TYPE` |
-| Ukuran | 1 B–12 MB; di luar itu `413 FILE_TOO_LARGE` |
+| Ukuran | 1 B–5 MB; di luar itu `413 FILE_TOO_LARGE` |
 | Nama file | `{waktu base36}-{uuid8}.{ext}` |
 | Tujuan | `public/uploads/` (volume Docker `indobengkel-uploads`) |
 | Respons | `201 { "url": "/api/uploads/<name>" }`, header `cache-control: no-store` |
 | Serving | `GET /api/uploads/[name]` → `image/*`, `cache-control: public, max-age=31536000, immutable`; path traversal ditolak, file hilang → 404 |
 | Error | `400 INVALID_BODY` / `MISSING_FILE`, `415`, `413`, `503 STORAGE_UNAVAILABLE` |
-| Auth | belum ada (lokal); produksi wajib guard + kepemilikan |
+| Auth | sesi wajib (`GET /auth/me`); setelah file ditulis, route memanggil `POST /api/v1/uploads` untuk mencatat `{name, mimeType, size}` + `ownerUserId` |
+| Kepemilikan | Interceptor global memindai body mutasi; URL `/api/uploads/...` yang bukan milik pemanggil → `403 UPLOAD_NOT_OWNED` |
 
 **Pipeline klien** (`src/lib/upload-image.ts`) — dipakai semua field foto:
 
@@ -491,7 +504,7 @@ Endpoint `POST /api/uploads` (route handler Next.js di `src/app/api/uploads/rout
 
 ## 14. Keamanan
 
-**Baseline yang berjalan:** sesi httpOnly + query kepemilikan di service (IDOR), DTO eksplisit, React escaping, CSRF double-submit, rate limit fixed window dengan counter Redis (fallback memory), Helmet/CORS allowlist, upload wajib sesi + allowlist MIME + 5 MB + magic bytes + nama acak, `SameSite=Lax`. **Belum berjalan:** rotasi access/refresh JWT, verifikasi email wajib, kepemilikan file di DB, pino redaction. Tabel di bawah adalah target kontrol; baris yang bertanda ✅ sudah aktif di baseline.
+**Baseline yang berjalan:** sesi httpOnly + query kepemilikan di service (IDOR), DTO eksplisit, React escaping, CSRF double-submit, rate limit fixed window dengan counter Redis (fallback memory), Helmet/CORS allowlist, upload wajib sesi + allowlist MIME + 5 MB + magic bytes + nama acak + kepemilikan file di tabel `Upload`, `SameSite=Lax`. **Belum berjalan:** rotasi access/refresh JWT, verifikasi email wajib, pino redaction. Tabel di bawah adalah target kontrol; baris yang bertanda ✅ sudah aktif di baseline.
 
 | Risiko | Kontrol target |
 |---|---|

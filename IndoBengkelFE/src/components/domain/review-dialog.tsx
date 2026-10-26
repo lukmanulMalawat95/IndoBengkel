@@ -59,7 +59,8 @@ export function ReviewDialog({
   const pending = reviewWorkshop.isPending || reviewProduct.isPending;
 
   const submit = async () => {
-    if (comment.trim().length < 5) {
+    const trimmed = comment.trim();
+    if (trimmed.length > 0 && trimmed.length < 10) {
       setError(t("reviews.commentMin"));
       return;
     }
@@ -70,7 +71,7 @@ export function ReviewDialog({
         orderId,
         productId,
         rating,
-        comment: comment.trim(),
+        comment: trimmed,
         tags: selectedTags,
       } as const;
       if (target === "workshop") await reviewWorkshop.mutateAsync(input);
@@ -108,6 +109,7 @@ export function ReviewDialog({
               value={comment}
               onChange={(event) => setComment(event.target.value)}
               placeholder={t("reviews.commentPlaceholder")}
+              maxLength={500}
               rows={4}
             />
           </Field>

@@ -148,6 +148,18 @@ describe("BengkelShop orders", () => {
       .expect(201);
     expect(correct.body.data.status).toBe("completed");
 
+    const shortComment = await customer
+      .post(`${API}/reviews/product`)
+      .send({ orderId: order.id, productId: product.id, rating: 5, comment: "Mantap" })
+      .expect(422);
+    expect(shortComment.body.error.code).toBe("VALIDATION_ERROR");
+
+    const longComment = await customer
+      .post(`${API}/reviews/product`)
+      .send({ orderId: order.id, productId: product.id, rating: 5, comment: "x".repeat(501) })
+      .expect(422);
+    expect(longComment.body.error.code).toBe("VALIDATION_ERROR");
+
     const review = await customer
       .post(`${API}/reviews/product`)
       .send({ orderId: order.id, productId: product.id, rating: 5, comment: "Oli asli, cepat." })

@@ -359,3 +359,14 @@ model Notification {
 
   @@index([userId, createdAt])
 }
+
+model Upload {
+  id          String   @id
+  name        String   @unique
+  ownerUserId String
+  mimeType    String
+  size        Int
+  createdAt   DateTime @default(now())
+
+  @@index([ownerUserId])
+}

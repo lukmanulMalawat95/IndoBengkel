@@ -1248,7 +1248,7 @@
     "reviewProductBody": "Beri tahu pelanggan lain bagaimana sparepart ini bekerja untuk Anda.",
     "comment": "Komentar",
     "commentPlaceholder": "Apa yang menonjol?",
-    "commentMin": "Tulis minimal 5 karakter.",
+    "commentMin": "Tulis minimal 10 karakter (maksimal 500).",
     "rating": "Rating",
     "tagsLabel": "Apa yang menonjol?",
     "submit": "Kirim ulasan",

@@ -179,7 +179,7 @@ Responses use `{ data }` for single resources and `{ data, meta }` for paginated
 
 Every image field uses the same client pipeline (`IndoBengkelFE/src/lib/upload-image.ts`): validate → downscale to 1280 px → compress to ≤340 KB → upload with real XHR progress. The UI supports drag & drop, file picker, and camera capture with a file-picker fallback.
 
-The route handler writes to `public/uploads`; because `next start` does not serve public files added after build, files are served through `GET /api/uploads/[name]`. Docker mounts the `indobengkel-uploads` volume so images survive container restarts.
+The route handler writes to `public/uploads`; because `next start` does not serve public files added after build, files are served through `GET /api/uploads/[name]`. Docker mounts the `indobengkel-uploads` volume so images survive container restarts. After writing a file the route records its owner through `POST /api/v1/uploads`; the API rejects references to another account's upload, so a file URL cannot be attached to someone else's profile, vehicle, product or job.
 
 If storage is unavailable, the client falls back to an inline data URL so the flow can still complete.
 
@@ -206,10 +206,8 @@ These are intentionally deferred to production hardening:
 - Midtrans + signed webhook (current payment is a local simulation)
 - Email delivery/Mailpit and email verification enforcement
 - Socket.IO realtime chat (currently REST + refetch)
-- MinIO/S3 presigned uploads; uploads are session-gated but not tracked per
-  owner in the database
-- Contract gaps listed in `docs/TESTING.md` (for example, confirmation does not
-  re-check slot capacity)
+- MinIO/S3 presigned uploads (uploads are stored on the web tier's local disk;
+  ownership is tracked in the `Upload` table)
 - Multi-photo products and richer reports
 
 Automated API (Jest + Supertest) and browser (Playwright) suites plus CI are in

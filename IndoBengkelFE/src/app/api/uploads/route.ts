@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { cookies } from "next/headers";
 import path from "node:path";
 
@@ -27,21 +27,51 @@ function json(body: unknown, status: number) {
  * Next.js server, so it cannot rely on the client-side session store and must
  * validate the httpOnly cookie against the source of truth.
  */
-async function authenticatedUser() {
+async function authenticatedSession() {
   const jar = await cookies();
   if (!jar.has("ib_session")) return null;
+  const cookie = jar.toString();
 
   try {
     const response = await fetch(`${API_URL}/api/v1/auth/me`, {
-      headers: { cookie: jar.toString(), accept: "application/json" },
+      headers: { cookie, accept: "application/json" },
       cache: "no-store",
       signal: AbortSignal.timeout(5_000),
     });
     if (!response.ok) return null;
     const payload = (await response.json()) as { data?: { id?: string } };
-    return payload.data?.id ? payload.data : null;
+    if (!payload.data?.id) return null;
+    return { user: payload.data, cookie, csrf: jar.get("ib_csrf")?.value };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Record the file owner in the API database. The bytes stay in this tier; the
+ * session cookie proves who uploaded them. Without this record another
+ * signed-in user could reference the URL on their own profile.
+ */
+async function registerUpload(
+  session: { cookie: string; csrf?: string },
+  metadata: { name: string; mimeType: string; size: number },
+) {
+  try {
+    const response = await fetch(`${API_URL}/api/v1/uploads`, {
+      method: "POST",
+      headers: {
+        cookie: session.cookie,
+        accept: "application/json",
+        "content-type": "application/json",
+        ...(session.csrf ? { "x-csrf-token": session.csrf } : {}),
+      },
+      body: JSON.stringify(metadata),
+      cache: "no-store",
+      signal: AbortSignal.timeout(5_000),
+    });
+    return response.ok;
+  } catch {
+    return false;
   }
 }
 
@@ -80,8 +110,8 @@ function matchesSignature(bytes: Buffer, extension: string) {
  * S3/MinIO call and keep the same `{ url }` response shape.
  */
 export async function POST(request: Request) {
-  const user = await authenticatedUser();
-  if (!user) {
+  const session = await authenticatedSession();
+  if (!session) {
     return json({ error: "UNAUTHORIZED" }, 401);
   }
 
@@ -111,14 +141,24 @@ export async function POST(request: Request) {
   }
 
   const name = `${Date.now().toString(36)}-${randomUUID().slice(0, 8)}.${extension}`;
+  const directory = path.join(process.cwd(), "public", "uploads");
 
   try {
-    const directory = path.join(process.cwd(), "public", "uploads");
     await mkdir(directory, { recursive: true });
     await writeFile(path.join(directory, name), bytes, { flag: "wx" });
   } catch {
     // Read-only filesystem (e.g. serverless deploy): the client falls back to
     // storing the optimised image inline.
+    return json({ error: "STORAGE_UNAVAILABLE" }, 503);
+  }
+
+  const registered = await registerUpload(session, {
+    name,
+    mimeType: file.type,
+    size: file.size,
+  });
+  if (!registered) {
+    await unlink(path.join(directory, name)).catch(() => undefined);
     return json({ error: "STORAGE_UNAVAILABLE" }, 503);
   }
 

@@ -4,6 +4,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { ApiError } from "../common/api-error";
 import { clamp, randomCode, slugify, uid } from "../common/ids";
 import { dateKeyInJakarta } from "../common/geo";
+import { slotWindowFor } from "../common/slots";
 import { courierName } from "../common/shipping";
 import {
   orderJson,
@@ -275,23 +276,41 @@ export class WorkshopService {
 
   async confirmBooking(user: any, id: string, estimatedTotal: number) {
     const workshop = await this.requireOwner(user);
-    const order = await this.prisma.serviceOrder.findFirst({
-      where: { id, workshopId: workshop.id },
-    });
-    if (!order) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
-    if (order.status !== "requested") {
-      throw new ApiError("INVALID_TRANSITION", "Only requested bookings can be confirmed.", 409);
-    }
-    const updated = await this.prisma.serviceOrder.update({
-      where: { id },
-      data: { status: "confirmed", estimatedTotal: Number(estimatedTotal) || 0 },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // Lock the workshop so two confirmations cannot both claim the last slot.
+      await tx.$queryRaw`SELECT "id" FROM "Workshop" WHERE "id" = ${workshop.id} FOR UPDATE`;
+      const order = await tx.serviceOrder.findFirst({
+        where: { id, workshopId: workshop.id },
+      });
+      if (!order) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
+      if (order.status !== "requested") {
+        throw new ApiError("INVALID_TRANSITION", "Only requested bookings can be confirmed.", 409);
+      }
+
+      const slot = slotWindowFor(workshop, order.scheduledAt);
+      const active = await tx.serviceOrder.count({
+        where: {
+          workshopId: workshop.id,
+          status: { in: ["confirmed", "in_progress"] },
+          scheduledAt: { gte: slot.start, lt: slot.end },
+          id: { not: order.id },
+        },
+      });
+      if (active >= workshop.slotCapacityPerHour) {
+        throw new ApiError("SLOT_FULL", "That slot is already full.", 409);
+      }
+
+      return tx.serviceOrder.update({
+        where: { id },
+        data: { status: "confirmed", estimatedTotal: Number(estimatedTotal) || 0 },
+      });
     });
     await this.notify(
-      order.customerId,
+      updated.customerId,
       "booking_confirmed",
       "Booking confirmed",
-      `${order.workshopName} confirmed ${order.code} with an estimate of Rp ${Number(estimatedTotal).toLocaleString("id-ID")}.`,
-      `/bookings/${order.id}`,
+      `${updated.workshopName} confirmed ${updated.code} with an estimate of Rp ${Number(estimatedTotal).toLocaleString("id-ID")}.`,
+      `/bookings/${updated.id}`,
     );
     return serviceOrderJson(updated);
   }

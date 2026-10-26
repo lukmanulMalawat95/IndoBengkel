@@ -1,5 +1,5 @@
 import { Module } from "@nestjs/common";
-import { APP_GUARD } from "@nestjs/core";
+import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { PrismaModule } from "./prisma/prisma.module";
 import { AuthModule } from "./auth/auth.module";
 import { CatalogModule } from "./catalog/catalog.module";
@@ -9,10 +9,12 @@ import { BookingsModule } from "./bookings/bookings.module";
 import { WorkshopModule } from "./workshop/workshop.module";
 import { MessagingModule } from "./messaging/messaging.module";
 import { DemoModule } from "./demo/demo.module";
+import { UploadsModule } from "./uploads/uploads.module";
 import { HealthController } from "./health.controller";
 import { SessionGuard } from "./common/auth/session.guard";
 import { CsrfGuard } from "./common/security/csrf";
 import { RateLimitGuard } from "./common/security/rate-limit";
+import { UploadOwnershipInterceptor } from "./common/security/upload-ownership.interceptor";
 
 @Module({
   imports: [
@@ -25,6 +27,7 @@ import { RateLimitGuard } from "./common/security/rate-limit";
     WorkshopModule,
     MessagingModule,
     DemoModule,
+    UploadsModule,
   ],
   controllers: [HealthController],
   providers: [
@@ -40,6 +43,10 @@ import { RateLimitGuard } from "./common/security/rate-limit";
     {
       provide: APP_GUARD,
       useClass: CsrfGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: UploadOwnershipInterceptor,
     },
   ],
 })

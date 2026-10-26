@@ -293,7 +293,7 @@ Prioritas: **M** = Must, **S** = Should, **C** = Could (v1 hanya M/S).
 |---|---|
 | Performa | Pencarian bengkel p95 < 300 ms (10k bengkel seed), halaman list p95 < 2.5 s TTI di 4G |
 | Real-time | Pesan terkirim < 300 ms pada koneksi normal |
-| Keamanan | Argon2id, JWT 15 m + refresh rotation, CSRF, rate limit, otorisasi per resource, upload tervalidasi (MIME, ukuran, nama acak) |
+| Keamanan | Argon2id, JWT 15 m + refresh rotation, CSRF, rate limit, otorisasi per resource, upload tervalidasi (MIME, ukuran, nama acak) + kepemilikan file |
 | Media | Sumber ≤12 MB; kompresi klien ke sisi terpanjang 1280 px dengan target output ≤340 KB; progres per tahap; kamera dengan fallback file picker |
 | Aksesibilitas | WCAG 2.1 AA untuk kontras di kedua tema, fokus keyboard, label form, ukuran target sentuh ≥ 44px |
 | Kompatibilitas | Chrome/Edge/Firefox/Safari 2 versi terakhir; iOS Safari & Android Chrome |

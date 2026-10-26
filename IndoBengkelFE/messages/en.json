@@ -1248,7 +1248,7 @@
     "reviewProductBody": "Tell other customers how the part worked for you.",
     "comment": "Comment",
     "commentPlaceholder": "What stood out?",
-    "commentMin": "Write at least 5 characters.",
+    "commentMin": "Write at least 10 characters (max 500).",
     "rating": "Rating",
     "tagsLabel": "What stood out?",
     "submit": "Submit review",

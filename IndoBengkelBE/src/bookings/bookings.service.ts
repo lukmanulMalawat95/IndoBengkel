@@ -3,6 +3,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { ApiError } from "../common/api-error";
 import { randomCode, uid } from "../common/ids";
 import { serviceOrderJson } from "../common/serializers";
+import { resolveSlot } from "../common/slots";
 
 @Injectable()
 export class BookingsService {
@@ -58,9 +59,20 @@ export class BookingsService {
       throw new ApiError("VALIDATION_ERROR", "Choose at least one service.", 422);
     }
     const scheduled = new Date(input.scheduledAt);
-    if (!Number.isFinite(scheduled.getTime()) || scheduled.getTime() < Date.now() + 60 * 60 * 1000) {
+    if (!Number.isFinite(scheduled.getTime())) {
+      throw new ApiError("VALIDATION_ERROR", "scheduledAt must be a valid ISO timestamp.", 422);
+    }
+    if (scheduled.getTime() < Date.now() + 60 * 60 * 1000) {
       throw new ApiError("SLOT_FULL", "Choose a slot at least one hour from now.", 409);
     }
+    const resolved = resolveSlot(workshop, scheduled);
+    if ("error" in resolved) {
+      if (resolved.error === "CLOSED") {
+        throw new ApiError("WORKSHOP_CLOSED", "The workshop is closed at that time.", 422);
+      }
+      throw new ApiError("VALIDATION_ERROR", "Choose one of the available hourly slots.", 422);
+    }
+    const slot = resolved.slot;
 
     const items = services.map((service) => ({
       id: uid("soi"),
@@ -72,6 +84,21 @@ export class BookingsService {
     }));
     const orderId = uid("so");
     const order = await this.prisma.$transaction(async (tx) => {
+      // Serialise capacity checks per workshop; without the lock two concurrent
+      // confirmations (or a confirmation racing a new booking) can both see the
+      // last free slot.
+      await tx.$queryRaw`SELECT "id" FROM "Workshop" WHERE "id" = ${workshop.id} FOR UPDATE`;
+      const active = await tx.serviceOrder.count({
+        where: {
+          workshopId: workshop.id,
+          status: { in: ["confirmed", "in_progress"] },
+          scheduledAt: { gte: slot.start, lt: slot.end },
+        },
+      });
+      if (active >= workshop.slotCapacityPerHour) {
+        throw new ApiError("SLOT_FULL", "That slot is already full.", 409);
+      }
+
       const created = await tx.serviceOrder.create({
         data: {
           id: orderId,

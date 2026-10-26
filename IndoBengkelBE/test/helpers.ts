@@ -165,6 +165,50 @@ export function inHours(hours: number) {
   return new Date(Date.now() + hours * 60 * 60 * 1000);
 }
 
+const JAKARTA_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+/**
+ * Next full hour in Jakarta at least `hours` from now. Booking slots are
+ * hourly windows, so fixtures must send aligned timestamps.
+ */
+export function nextSlotAfter(hours: number) {
+  const shifted = Date.now() + hours * 60 * 60 * 1000 + JAKARTA_OFFSET_MS;
+  const boundary = Math.ceil(shifted / 3_600_000) * 3_600_000 - JAKARTA_OFFSET_MS;
+  return new Date(boundary);
+}
+
+/**
+ * First hourly slot at least `hoursAhead` from now that fits the default
+ * workshop schedule created by `registerWorkshop` (08:00–18:00, closed Sunday).
+ */
+export function nextOpenSlot(hoursAhead = 2) {
+  let slot = nextSlotAfter(hoursAhead);
+  for (let attempt = 0; attempt < 24 * 10; attempt += 1) {
+    const shifted = new Date(slot.getTime() + JAKARTA_OFFSET_MS);
+    const day = shifted.getUTCDay();
+    const hour = shifted.getUTCHours();
+    if (day !== 0 && hour >= 8 && hour < 18) return slot;
+    slot = new Date(slot.getTime() + 3_600_000);
+  }
+  throw new Error("No open slot found within 10 days");
+}
+
+/** Make a fixture workshop bookable at any hour (tests for time windows). */
+export async function openAllDay(agent: Agent) {
+  await agent
+    .patch(`${API}/workshop/me`)
+    .send({
+      hours: Array.from({ length: 7 }, (_, dayOfWeek) => ({
+        dayOfWeek,
+        openTime: "00:00",
+        closeTime: "24:00",
+        isClosed: false,
+      })),
+      closures: [],
+    })
+    .expect(200);
+}
+
 export interface BookingInput {
   workshopId: string;
   vehicleId: string;
@@ -181,7 +225,7 @@ export async function createBooking(customer: Agent, input: BookingInput) {
       workshopId: input.workshopId,
       vehicleId: input.vehicleId,
       serviceIds: input.serviceIds,
-      scheduledAt: input.scheduledAt ?? inHours(24).toISOString(),
+      scheduledAt: input.scheduledAt ?? nextOpenSlot(2).toISOString(),
       complaint: input.complaint ?? "Mesin berbunyi kasar saat digas pelan.",
       odometer: input.odometer ?? 10_000,
     });

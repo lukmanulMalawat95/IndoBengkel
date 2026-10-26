@@ -5,14 +5,12 @@ import {
   asClosures,
   asHours,
   booleanOrUndefined,
-  dateKeyInJakarta,
   numberOrUndefined,
   paginate,
 } from "../common/geo";
+import { dayOfWeekInZone, slotStartInZone, workshopTimeZone } from "../common/slots";
 import { productJson, workshopJson } from "../common/serializers";
 import { WorkshopGeoRepository, WorkshopSort } from "./workshop-geo.repository";
-
-const WIB_OFFSET = "+07:00";
 
 const workshopInclude = {
   services: true,
@@ -87,34 +85,34 @@ export class CatalogService {
     const workshop = await this.prisma.workshop.findUnique({ where: { id: workshopId } });
     if (!workshop) throw new ApiError("NOT_FOUND", "Workshop not found.", 404);
 
-    const hours = asHours(workshop.hours);
-    const closures = asClosures(workshop.closures);
-    const day = new Date(`${date}T12:00:00${WIB_OFFSET}`).getUTCDay();
-    const dayHours = hours.find((hour) => hour.dayOfWeek === day);
+    const timeZone = workshopTimeZone(workshop);
+    const day = dayOfWeekInZone(date, timeZone);
+    const dayHours = asHours(workshop.hours).find((hour) => hour.dayOfWeek === day);
     if (!dayHours || dayHours.isClosed) return [];
-    if (closures.some((closure) => closure.date === date)) return [];
+    if (asClosures(workshop.closures).some((closure) => closure.date === date)) return [];
 
     const [openH] = dayHours.openTime.split(":").map(Number);
     const [closeH] = dayHours.closeTime.split(":").map(Number);
     const slots: { time: string; iso: string; available: boolean; remaining: number }[] = [];
 
     for (let hour = openH; hour < closeH; hour += 1) {
-      const iso = new Date(`${date}T${String(hour).padStart(2, "0")}:00:00${WIB_OFFSET}`).toISOString();
+      const start = slotStartInZone(date, hour, timeZone);
+      const end = new Date(start.getTime() + 60 * 60 * 1000);
       const active = await this.prisma.serviceOrder.count({
         where: {
           workshopId,
           status: { in: ["confirmed", "in_progress"] },
           scheduledAt: {
-            gte: new Date(iso),
-            lt: new Date(new Date(iso).getTime() + 60 * 60 * 1000),
+            gte: start,
+            lt: end,
           },
         },
       });
-      const leadTimeOk = new Date(iso).getTime() > Date.now() + 60 * 60 * 1000;
+      const leadTimeOk = start.getTime() > Date.now() + 60 * 60 * 1000;
       const remaining = Math.max(0, workshop.slotCapacityPerHour - active);
       slots.push({
         time: `${String(hour).padStart(2, "0")}:00`,
-        iso,
+        iso: start.toISOString(),
         available: remaining > 0 && leadTimeOk,
         remaining,
       });

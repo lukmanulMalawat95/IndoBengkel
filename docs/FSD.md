@@ -465,7 +465,7 @@ Semua layar memakai `next-intl`; format tanggal via `Intl.DateTimeFormat(locale)
 
 **Pipeline (klien):** validasi tipe & ukuran → baca file (progress) → decode → perkecil ke sisi terpanjang 1280 px → kompresi JPEG berulang sampai ≤340 KB → unggah via XHR (progress nyata) → finalisasi. Label tahap: Reading, Optimising, Uploading, Finishing, Uploaded.
 
-**Normalisasi runtime lokal:** hasil kompresi diunggah ke `POST /api/uploads`, ditulis ke `public/uploads`, dan disajikan kembali lewat `GET /api/uploads/[name]` (route handler, karena `next start` tidak menyajikan file public yang ditambahkan setelah build). Respons `201 { url: "/api/uploads/<name>" }`. Bila storage read-only, klien menyimpan data URL inline.
+**Normalisasi runtime lokal:** hasil kompresi diunggah ke `POST /api/uploads`, ditulis ke `public/uploads`, dan disajikan kembali lewat `GET /api/uploads/[name]` (route handler, karena `next start` tidak menyajikan file public yang ditambahkan setelah build). Respons `201 { url: "/api/uploads/<name>" }`. Setelah file ditulis, route mencatat pemiliknya lewat `POST /api/v1/uploads`; referensi ke file milik akun lain ditolak `403 UPLOAD_NOT_OWNED`. Bila storage read-only, klien menyimpan data URL inline.
 
 **Aturan:**
 - Ukuran sumber ≤12 MB; hanya JPG/PNG/WebP; hasil akhir selalu JPEG.
