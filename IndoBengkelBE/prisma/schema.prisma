@@ -1,0 +1,361 @@
+// IndoBengkel data model — PostgreSQL.
+// Money is stored in whole IDR so it never suffers floating point drift.
+// Immutable transaction snapshots (order items, service invoice items, shipping)
+// are stored as JSON; catalogue and identity data is normalised.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id
+  email         String   @unique
+  passwordHash  String
+  fullName      String
+  phone         String
+  role          String
+  locale        String   @default("en")
+  avatarUrl     String?
+  emailVerified Boolean  @default(false)
+  status        String   @default("active")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions      Session[]
+  workshops     Workshop[]     @relation("WorkshopOwner")
+  vehicles      Vehicle[]
+  serviceOrders ServiceOrder[]
+  orders        Order[]
+  carts         Cart[]
+  reviews       Review[]
+  conversations Conversation[]
+  messages      Message[]
+  notifications Notification[]
+
+  @@index([role])
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Workshop {
+  id                  String   @id
+  ownerUserId         String   @unique
+  owner               User     @relation("WorkshopOwner", fields: [ownerUserId], references: [id])
+  name                String
+  slug                String   @unique
+  description         String   @default("")
+  workshopType        String
+  phone               String
+  email               String
+  addressLine         String
+  city                String
+  province            String   @default("")
+  postalCode          String   @default("")
+  countryCode         String   @default("ID")
+  lat                 Float
+  lng                 Float
+  timezone            String   @default("Asia/Jakarta")
+  coverUrl            String   @default("")
+  logoUrl             String?
+  gallery             String[]
+  status              String   @default("draft")
+  ratingAvg           Float    @default(0)
+  ratingCount         Int      @default(0)
+  hours               Json
+  closures            Json
+  slotCapacityPerHour Int      @default(1)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  services      Service[]
+  mechanics     Mechanic[]
+  products      Product[]
+  reviews       Review[]
+  serviceOrders ServiceOrder[]
+  orders        Order[]
+  carts         Cart[]
+  conversations Conversation[]
+
+  @@index([status, workshopType])
+  @@index([city])
+}
+
+model Mechanic {
+  id              String   @id
+  workshopId      String
+  workshop        Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  name            String
+  phone           String
+  experienceYears Int      @default(0)
+  skills          String[]
+  photoUrl        String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  @@index([workshopId])
+}
+
+model Service {
+  id              String   @id
+  workshopId      String
+  workshop        Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  name            String
+  description     String   @default("")
+  price           Int      @default(0)
+  durationMinutes Int      @default(30)
+  category        String
+  kind            String
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  @@index([workshopId])
+}
+
+model Product {
+  id            String   @id
+  workshopId    String
+  workshop      Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  workshopSlug  String
+  workshopName  String
+  workshopType  String
+  title         String
+  slug          String   @unique
+  description   String   @default("")
+  category      String
+  brand         String   @default("")
+  partNumber    String   @default("")
+  price         Int
+  discountType  String   @default("none")
+  discountValue Int      @default(0)
+  weightGrams   Int      @default(1)
+  stock         Int      @default(0)
+  isActive      Boolean  @default(true)
+  ratingAvg     Float    @default(0)
+  ratingCount   Int      @default(0)
+  imageUrl      String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([workshopId])
+  @@index([category, isActive])
+}
+
+model Vehicle {
+  id               String    @id
+  customerId       String
+  customer         User      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type             String
+  brand            String
+  model            String
+  year             Int
+  plateNumber      String
+  color            String
+  odometerKm       Int       @default(0)
+  photoUrl         String?
+  reminderMonths   Int       @default(6)
+  reminderKm       Int       @default(5000)
+  lastServiceAt    DateTime?
+  lastWorkshopName String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  serviceOrders ServiceOrder[]
+
+  @@unique([customerId, plateNumber])
+  @@index([customerId])
+}
+
+model ServiceOrder {
+  id               String   @id
+  code             String   @unique
+  customerId       String
+  customer         User     @relation(fields: [customerId], references: [id])
+  customerName     String
+  customerPhone    String
+  workshopId       String
+  workshop         Workshop @relation(fields: [workshopId], references: [id])
+  workshopName     String
+  workshopSlug     String
+  workshopType     String
+  vehicleId        String
+  vehicle          Vehicle  @relation(fields: [vehicleId], references: [id])
+  vehicleLabel     String
+  plateNumber      String
+  status           String
+  scheduledAt      DateTime
+  complaint        String
+  customerNote     String?
+  odometerIn       Int
+  odometerOut      Int?
+  estimatedTotal   Int      @default(0)
+  finalTotal       Int?
+  mechanicNote     String?
+  mechanicIds      String[]
+  mechanicNames    String[]
+  items            Json
+  photos           String[]
+  createdAt        DateTime @default(now())
+  startedAt        DateTime?
+  completedAt      DateTime?
+  paidAt           DateTime?
+  paymentMethod    String?
+  cancelReason     String?
+  reviewId         String?
+
+  @@index([customerId, createdAt])
+  @@index([workshopId, scheduledAt])
+  @@index([status])
+}
+
+model Cart {
+  id           String   @id
+  customerId   String
+  customer     User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  workshopId   String
+  workshop     Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  workshopName String
+  workshopSlug String
+  items        Json
+  subtotal     Int      @default(0)
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  @@unique([customerId, workshopId])
+  @@index([customerId])
+}
+
+model Order {
+  id            String   @id
+  code          String   @unique
+  customerId    String
+  customer      User     @relation(fields: [customerId], references: [id])
+  customerName  String
+  customerPhone String
+  workshopId    String
+  workshop      Workshop @relation(fields: [workshopId], references: [id])
+  workshopName  String
+  workshopSlug  String
+  status        String
+  fulfillment   String
+  shippingCost  Int      @default(0)
+  shipping      Json?
+  items         Json
+  subtotal      Int      @default(0)
+  discountTotal Int      @default(0)
+  total         Int      @default(0)
+  pickupCode    String
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+  paidAt        DateTime?
+  preparingAt   DateTime?
+  readyAt       DateTime?
+  completedAt   DateTime?
+  cancelledAt   DateTime?
+  cancelReason  String?
+
+  payment Payment?
+
+  @@index([customerId, createdAt])
+  @@index([workshopId, createdAt])
+  @@index([status])
+}
+
+model Payment {
+  id             String    @id
+  orderId        String    @unique
+  order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider       String    @default("fake")
+  method         String
+  amount         Int
+  status         String    @default("pending")
+  providerRef    String
+  vaNumber       String?
+  qrString       String?
+  expiresAt      DateTime
+  paidAt         DateTime?
+  createdAt      DateTime  @default(now())
+}
+
+model Review {
+  id             String    @id
+  customerId     String
+  customer       User      @relation(fields: [customerId], references: [id])
+  customerName   String
+  workshopId     String
+  workshop       Workshop  @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  serviceOrderId String?
+  orderId        String?
+  productId      String?
+  rating         Int
+  comment        String    @default("")
+  tags           String[]
+  status         String    @default("published")
+  workshopReply  String?
+  repliedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([workshopId, createdAt])
+  @@index([productId])
+}
+
+model Conversation {
+  id            String   @id
+  customerId    String
+  customer      User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customerName  String
+  workshopId    String
+  workshop      Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  workshopName  String
+  workshopSlug  String
+  lastMessageAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  messages Message[]
+
+  @@unique([customerId, workshopId])
+  @@index([workshopId])
+}
+
+model Message {
+  id             String       @id
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderUserId   String
+  sender         User         @relation(fields: [senderUserId], references: [id])
+  senderName     String
+  senderRole     String
+  body           String       @default("")
+  attachmentUrl  String?
+  readAt         DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+model Notification {
+  id        String    @id
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String
+  href      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}

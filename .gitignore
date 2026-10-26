@@ -1,0 +1,31 @@
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+
+# Local tooling state (agent runtime)
+.impeccable/
+
+# OS noise
+Thumbs.db
+desktop.ini
+
+# Logs and coverage
+*.log
+coverage/
+
+# Local env
+.env
+.env.local
+IndoBengkelFE/.env.local
+IndoBengkelBE/.env
+
+# Build output
+IndoBengkelFE/.next/
+IndoBengkelBE/dist/
+
+# Local uploads (Docker keeps them in a named volume)
+IndoBengkelFE/public/uploads/

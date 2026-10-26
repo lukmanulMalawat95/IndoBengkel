@@ -1,0 +1,28 @@
+{
+  "name": "indobengkel",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test:api": "npm --prefix IndoBengkelBE test -- --runInBand",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report",
+    "stack:up": "docker compose up -d --build",
+    "stack:down": "docker compose down"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.5"
+  },
+  "dependencies": {
+    "@vheins/opencode-9router": "^0.9.1"
+  }
+}

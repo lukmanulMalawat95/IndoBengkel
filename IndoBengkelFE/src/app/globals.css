@@ -1,0 +1,217 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,
+.dark {
+  --bg: #0a0c0b;
+  --surface: #121614;
+  --surface-2: #18201c;
+  --surface-3: #202a24;
+  --line: #232a26;
+  --line-strong: #334038;
+  --fg: #f2f5f0;
+  --muted: #9aa69e;
+  --faint: #68746d;
+  --accent: #c8f751;
+  --accent-ink: #10140d;
+  --logo-wordmark: #c8f751;
+  --success: #7bd6a3;
+  --warning: #e8b35e;
+  --danger: #f08484;
+  color-scheme: dark;
+}
+
+.light {
+  --bg: #f3f1ea;
+  --surface: #fbfaf6;
+  --surface-2: #e9e6db;
+  --surface-3: #ded9cc;
+  --line: #d9d4c7;
+  --line-strong: #c4bdad;
+  --fg: #161a16;
+  --muted: #505a53;
+  --faint: #5f6a62;
+  --accent: #587300;
+  --accent-ink: #f7f6ef;
+  --logo-wordmark: #161a16;
+  --success: #1d6b45;
+  --warning: #8a5a00;
+  --danger: #b23a3a;
+  color-scheme: light;
+}
+
+* {
+  border-color: var(--line);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(900px 520px at 8% -12%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 65%),
+    var(--bg);
+  color: var(--fg);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--fg);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@layer base {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-space-grotesk), system-ui, sans-serif;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, var(--line) 55%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--line) 55%, transparent) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: linear-gradient(to bottom, black, transparent 80%);
+  }
+
+  .card-hover {
+    transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease;
+  }
+
+  .card-hover:hover {
+    transform: translateY(-2px);
+    border-color: var(--line-strong);
+  }
+
+  .glass {
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    backdrop-filter: blur(18px);
+  }
+
+  /* Muted lime tile: keeps the accent readable without the neon halo. */
+  .chip-accent {
+    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--line));
+    background:
+      radial-gradient(
+        130% 130% at 30% 0%,
+        color-mix(in srgb, var(--accent) 15%, transparent),
+        transparent 62%
+      ),
+      var(--surface-2);
+    color: var(--accent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 5%, transparent);
+  }
+
+  .progress-sheen {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, #ffffff 40%, transparent),
+      transparent
+    );
+    transform: translateX(-100%);
+    animation: progress-sheen 1.5s ease-in-out infinite;
+  }
+
+  .safe-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
+
+.leaflet-container {
+  background: var(--surface-2);
+  font-family: var(--font-inter), system-ui, sans-serif;
+}
+
+.leaflet-control-zoom a,
+.leaflet-control-attribution {
+  background: var(--surface) !important;
+  color: var(--fg) !important;
+  border-color: var(--line) !important;
+}
+
+.leaflet-control-attribution a {
+  color: var(--muted) !important;
+}
+
+.leaflet-tooltip {
+  background: var(--surface) !important;
+  color: var(--fg) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 24px -16px rgba(0, 0, 0, 0.5) !important;
+}
+
+.leaflet-tooltip-top:before {
+  border-top-color: var(--line) !important;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes progress-sheen {
+  0% {
+    transform: translateX(-100%);
+  }
+  60%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,93 @@
+name: indobengkel
+
+services:
+  db:
+    # PostGIS-enabled PostgreSQL 16: nearest-workshop search runs in the DB.
+    # The extension is created by the `1_postgis_workshop_location` migration.
+    image: postgis/postgis:16-3.4-alpine
+    container_name: indobengkel-db
+    environment:
+      POSTGRES_DB: indobengkel
+      POSTGRES_USER: indobengkel
+      POSTGRES_PASSWORD: indobengkel
+    ports:
+      - "55432:5432"
+    volumes:
+      - indobengkel-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U indobengkel -d indobengkel"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: indobengkel-redis
+    command:
+      [
+        "redis-server",
+        "--save",
+        "",
+        "--appendonly",
+        "no",
+        "--maxmemory",
+        "64mb",
+        "--maxmemory-policy",
+        "allkeys-lru",
+      ]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: ./IndoBengkelBE
+    container_name: indobengkel-api
+    environment:
+      DATABASE_URL: postgresql://indobengkel:indobengkel@db:5432/indobengkel?schema=public
+      REDIS_URL: redis://redis:6379/0
+      PORT: 4000
+      NODE_ENV: production
+      CORS_ORIGIN: http://localhost:3000
+    ports:
+      - "4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && node dist/src/seed/run.js && node dist/src/main.js"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/api/v1/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./IndoBengkelFE
+      args:
+        NEXT_PUBLIC_USE_MOCK_API: "false"
+        API_INTERNAL_URL: "http://backend:4000"
+        NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+    container_name: indobengkel-web
+    environment:
+      API_INTERNAL_URL: http://backend:4000
+      NEXT_PUBLIC_USE_MOCK_API: "false"
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - indobengkel-uploads:/app/public/uploads
+
+volumes:
+  indobengkel-pgdata:
+  indobengkel-uploads:

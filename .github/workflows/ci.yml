@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (typecheck, build, API e2e)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4-alpine
+        env:
+          POSTGRES_DB: indobengkel
+          POSTGRES_USER: indobengkel
+          POSTGRES_PASSWORD: indobengkel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U indobengkel -d indobengkel"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://indobengkel:indobengkel@localhost:5432/indobengkel?schema=public
+      REDIS_URL: redis://localhost:6379/0
+      NODE_ENV: test
+    defaults:
+      run:
+        working-directory: IndoBengkelBE
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: IndoBengkelBE/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Apply migrations to an empty database
+        run: npx prisma migrate deploy
+      - name: Fail on schema drift (schema.prisma changed without a migration)
+        run: |
+          npx prisma migrate diff \
+            --from-url "$DATABASE_URL" \
+            --to-schema-datamodel prisma/schema.prisma \
+            --exit-code
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test -- --runInBand
+
+  frontend:
+    name: Frontend (typecheck, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: IndoBengkelFE
+    env:
+      NEXT_PUBLIC_USE_MOCK_API: "false"
+      API_INTERNAL_URL: http://localhost:4000
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: IndoBengkelFE/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+  e2e:
+    name: Browser e2e (Docker stack)
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the stack
+        run: docker compose up -d --build
+      - name: Wait for the API and web app
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://localhost:4000/api/v1/health >/dev/null \
+              && curl -fsS http://localhost:3000/en >/dev/null; then
+              echo "stack is ready"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "stack did not become ready in time"
+          docker compose logs --tail=200
+          exit 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7
+      - name: Dump stack logs on failure
+        if: failure()
+        run: docker compose logs --tail=300
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v

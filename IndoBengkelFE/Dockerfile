@@ -1,0 +1,22 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY . .
+
+ARG NEXT_PUBLIC_USE_MOCK_API=false
+ARG API_INTERNAL_URL=http://backend:4000
+ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+ENV NEXT_PUBLIC_USE_MOCK_API=$NEXT_PUBLIC_USE_MOCK_API
+ENV API_INTERNAL_URL=$API_INTERNAL_URL
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+
+RUN npm run build
+
+EXPOSE 3000
+
+CMD ["npm", "start"]

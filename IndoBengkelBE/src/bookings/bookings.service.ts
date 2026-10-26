@@ -1,0 +1,258 @@
+import { Injectable } from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import { ApiError } from "../common/api-error";
+import { randomCode, uid } from "../common/ids";
+import { serviceOrderJson } from "../common/serializers";
+
+@Injectable()
+export class BookingsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async list(userId: string) {
+    const orders = await this.prisma.serviceOrder.findMany({
+      where: { customerId: userId },
+      orderBy: { createdAt: "desc" },
+    });
+    return orders.map(serviceOrderJson);
+  }
+
+  async get(userId: string, user: any, id: string) {
+    const order = await this.prisma.serviceOrder.findUnique({ where: { id } });
+    if (!order) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
+    await this.assertAccess(user, order);
+    return serviceOrderJson(order);
+  }
+
+  async create(userId: string, user: any, input: any) {
+    const workshop = await this.prisma.workshop.findUnique({
+      where: { id: String(input.workshopId ?? "") },
+      include: { services: true },
+    });
+    if (!workshop || workshop.status !== "active") {
+      throw new ApiError("NOT_FOUND", "Workshop not found.", 404);
+    }
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id: String(input.vehicleId ?? ""), customerId: userId },
+    });
+    if (!vehicle) throw new ApiError("NOT_FOUND", "Vehicle not found.", 404);
+    if (vehicle.type !== workshop.workshopType) {
+      throw new ApiError(
+        "VEHICLE_TYPE_MISMATCH",
+        "This workshop does not service that vehicle type.",
+        422,
+      );
+    }
+    if (Number(input.odometer) < vehicle.odometerKm) {
+      throw new ApiError("ODOMETER_TOO_LOW", "Odometer cannot be lower than the last record.", 422);
+    }
+    if (String(input.complaint ?? "").trim().length < 10) {
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        "Please describe the complaint in at least 10 characters.",
+        422,
+      );
+    }
+    const serviceIds = Array.isArray(input.serviceIds) ? input.serviceIds : [];
+    const services = workshop.services.filter((service) => serviceIds.includes(service.id));
+    if (services.length === 0) {
+      throw new ApiError("VALIDATION_ERROR", "Choose at least one service.", 422);
+    }
+    const scheduled = new Date(input.scheduledAt);
+    if (!Number.isFinite(scheduled.getTime()) || scheduled.getTime() < Date.now() + 60 * 60 * 1000) {
+      throw new ApiError("SLOT_FULL", "Choose a slot at least one hour from now.", 409);
+    }
+
+    const items = services.map((service) => ({
+      id: uid("soi"),
+      kind: service.kind,
+      name: service.name,
+      qty: 1,
+      unitPrice: service.price,
+      subtotal: service.price,
+    }));
+    const orderId = uid("so");
+    const order = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.serviceOrder.create({
+        data: {
+          id: orderId,
+          code: randomCode("SO"),
+          customerId: userId,
+          customerName: user.fullName,
+          customerPhone: user.phone,
+          workshopId: workshop.id,
+          workshopName: workshop.name,
+          workshopSlug: workshop.slug,
+          workshopType: workshop.workshopType,
+          vehicleId: vehicle.id,
+          vehicleLabel: `${vehicle.brand} ${vehicle.model}`,
+          plateNumber: vehicle.plateNumber,
+          status: "requested",
+          scheduledAt: scheduled,
+          complaint: String(input.complaint),
+          customerNote: input.customerNote ? String(input.customerNote) : null,
+          odometerIn: Number(input.odometer),
+          estimatedTotal: items.reduce((sum, item) => sum + item.subtotal, 0),
+          mechanicIds: [],
+          mechanicNames: [],
+          items: items as any,
+          photos: [],
+        },
+      });
+      await tx.notification.createMany({
+        data: [
+          {
+            id: uid("notif"),
+            userId: workshop.ownerUserId,
+            type: "booking_requested",
+            title: "New booking request",
+            body: `${user.fullName} requested a slot for ${vehicle.brand} ${vehicle.model}.`,
+            href: "/workshop/bookings",
+          },
+          {
+            id: uid("notif"),
+            userId: userId,
+            type: "booking_requested",
+            title: "Booking requested",
+            body: `${workshop.name} received your request. You will be notified when it is confirmed.`,
+            href: `/bookings/${created.id}`,
+          },
+        ],
+      });
+      return created;
+    });
+    return serviceOrderJson(order);
+  }
+
+  async cancel(userId: string, user: any, id: string) {
+    const order = await this.prisma.serviceOrder.findUnique({ where: { id } });
+    if (!order) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
+    await this.assertAccess(user, order);
+    if (!["requested", "confirmed"].includes(order.status)) {
+      throw new ApiError("INVALID_TRANSITION", "This booking can no longer be cancelled.", 409);
+    }
+    const hours = (order.scheduledAt.getTime() - Date.now()) / 3_600_000;
+    if (user.role === "customer" && hours < 2) {
+      throw new ApiError(
+        "CANCELLATION_WINDOW_CLOSED",
+        "Contact the workshop to cancel this slot.",
+        409,
+      );
+    }
+    const updated = await this.prisma.serviceOrder.update({
+      where: { id },
+      data: {
+        status: "cancelled",
+        cancelReason: user.role === "customer" ? "Cancelled by customer" : "Cancelled by workshop",
+      },
+    });
+    if (user.role === "customer") {
+      const workshop = await this.prisma.workshop.findUnique({ where: { id: order.workshopId } });
+      if (workshop) {
+        await this.prisma.notification.create({
+          data: {
+            id: uid("notif"),
+            userId: workshop.ownerUserId,
+            type: "booking_declined",
+            title: "Booking cancelled",
+            body: `${order.customerName} cancelled ${order.code}.`,
+            href: "/workshop/bookings",
+          },
+        });
+      }
+    }
+    return serviceOrderJson(updated);
+  }
+
+  async approveEstimate(userId: string, id: string) {
+    const order = await this.prisma.serviceOrder.findFirst({
+      where: { id, customerId: userId },
+    });
+    if (!order) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
+    if (order.status !== "awaiting_approval") {
+      throw new ApiError("INVALID_TRANSITION", "There is no estimate to approve.", 409);
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.serviceOrder.update({
+        where: { id },
+        data: { status: "completed", completedAt: new Date() },
+      });
+      await this.touchVehicle(tx, updated);
+      return serviceOrderJson(updated);
+    });
+  }
+
+  async rejectEstimate(userId: string, id: string) {
+    const order = await this.prisma.serviceOrder.findFirst({
+      where: { id, customerId: userId },
+    });
+    if (!order) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
+    if (order.status !== "awaiting_approval") {
+      throw new ApiError("INVALID_TRANSITION", "There is no estimate to reject.", 409);
+    }
+    const updated = await this.prisma.serviceOrder.update({
+      where: { id },
+      data: {
+        status: "in_progress",
+        mechanicNote: "Customer rejected the revised estimate. The workshop is reviewing the items.",
+      },
+    });
+    return serviceOrderJson(updated);
+  }
+
+  async pay(userId: string, id: string, method: string) {
+    const order = await this.prisma.serviceOrder.findFirst({
+      where: { id, customerId: userId },
+    });
+    if (!order) throw new ApiError("NOT_FOUND", "Booking not found.", 404);
+    if (order.status !== "completed") {
+      throw new ApiError("INVALID_TRANSITION", "This invoice is not ready to pay.", 409);
+    }
+    if (!["va", "bank_transfer", "qris", "cash"].includes(method)) {
+      throw new ApiError("VALIDATION_ERROR", "Unsupported payment method.", 422);
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.serviceOrder.update({
+        where: { id },
+        data: { status: "paid", paymentMethod: method, paidAt: new Date() },
+      });
+      await this.touchVehicle(tx, updated);
+      const workshop = await tx.workshop.findUnique({ where: { id: updated.workshopId } });
+      if (workshop) {
+        await tx.notification.create({
+          data: {
+            id: uid("notif"),
+            userId: workshop.ownerUserId,
+            type: "service_paid",
+            title: "Service paid",
+            body: `${updated.customerName} paid ${updated.code}.`,
+            href: `/workshop/service-orders/${updated.id}`,
+          },
+        });
+      }
+      return serviceOrderJson(updated);
+    });
+  }
+
+  async assertAccess(user: any, order: any) {
+    if (order.customerId === user.id) return;
+    if (user.role === "workshop_owner") {
+      const workshop = await this.prisma.workshop.findUnique({ where: { ownerUserId: user.id } });
+      if (workshop && order.workshopId === workshop.id) return;
+    }
+    throw new ApiError("NOT_FOUND", "Booking not found.", 404);
+  }
+
+  async touchVehicle(tx: any, order: any) {
+    if (order.odometerOut === null || order.odometerOut === undefined) return;
+    const vehicle = await tx.vehicle.findUnique({ where: { id: order.vehicleId } });
+    if (!vehicle) return;
+    await tx.vehicle.update({
+      where: { id: vehicle.id },
+      data: {
+        odometerKm: Math.max(vehicle.odometerKm, order.odometerOut),
+        lastServiceAt: new Date(),
+        lastWorkshopName: order.workshopName,
+      },
+    });
+  }
+}

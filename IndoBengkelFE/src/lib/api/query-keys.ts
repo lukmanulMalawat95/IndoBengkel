@@ -1,0 +1,27 @@
+import type { ProductQuery, WorkshopQuery } from "./types";
+
+export const queryKeys = {
+  workshops: (query: WorkshopQuery = {}) => ["workshops", query] as const,
+  workshop: (slug: string, lat?: number, lng?: number) => ["workshop", slug, lat, lng] as const,
+  availability: (workshopId: string, date: string) => ["availability", workshopId, date] as const,
+  products: (query: ProductQuery = {}) => ["products", query] as const,
+  product: (slug: string) => ["product", slug] as const,
+  cart: () => ["cart"] as const,
+  orders: () => ["orders"] as const,
+  order: (id: string) => ["order", id] as const,
+  vehicles: () => ["vehicles"] as const,
+  vehicle: (id: string) => ["vehicle", id] as const,
+  serviceOrders: () => ["service-orders"] as const,
+  serviceOrder: (id: string) => ["service-order", id] as const,
+  conversations: () => ["conversations"] as const,
+  conversation: (id: string) => ["conversation", id] as const,
+  notifications: () => ["notifications"] as const,
+  workshopMe: () => ["workshop-me"] as const,
+  workshopDashboard: () => ["workshop-dashboard"] as const,
+  mechanics: () => ["mechanics"] as const,
+  workshopServices: () => ["workshop-services"] as const,
+  workshopProducts: () => ["workshop-products"] as const,
+  workshopBookings: (status?: string) => ["workshop-bookings", status] as const,
+  workshopOrders: (status?: string) => ["workshop-orders", status] as const,
+  workshopReviews: () => ["workshop-reviews"] as const,
+};
