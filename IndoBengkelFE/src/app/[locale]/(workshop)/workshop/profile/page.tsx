@@ -135,15 +135,9 @@ export default function WorkshopProfilePage() {
         title={t("console.profile")}
         description={t("console.profileSubtitle")}
         actions={
-          <>
-            <Badge variant={workshop.status === "active" ? "success" : workshop.status === "suspended" ? "danger" : "default"}>
-              {t(`status.workshop.${workshop.status}`)}
-            </Badge>
-            <Button type="submit" size="sm" disabled={updateWorkshop.isPending}>
-              {updateWorkshop.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {t("console.saveProfile")}
-            </Button>
-          </>
+          <Badge variant={workshop.status === "active" ? "success" : workshop.status === "suspended" ? "danger" : "default"}>
+            {t(`status.workshop.${workshop.status}`)}
+          </Badge>
         }
       />
 
@@ -343,7 +337,7 @@ export default function WorkshopProfilePage() {
 
       {error ? <p className="text-xs text-danger">{error}</p> : null}
 
-      <div className="flex justify-end">
+      <div className="flex justify-start">
         <Button type="submit" disabled={updateWorkshop.isPending}>
           {updateWorkshop.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           {t("console.saveProfile")}

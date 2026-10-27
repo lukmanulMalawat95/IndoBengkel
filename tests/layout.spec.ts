@@ -29,4 +29,19 @@ test.describe("Workshop layout overlays", () => {
     await signOut.click();
     await expect(page).toHaveURL(/\/en\/auth\/login/);
   });
+
+  test("the profile has one save action, aligned to the left", async ({ page }) => {
+    await loginAsDemo(page, "workshop");
+    await page.goto("/en/workshop/profile");
+
+    const save = page.getByRole("button", { name: "Save profile" });
+    await expect(save).toHaveCount(1);
+    await expect(save).toBeVisible();
+
+    const box = await save.boundingBox();
+    const viewport = page.viewportSize();
+    expect(box).not.toBeNull();
+    expect(viewport).not.toBeNull();
+    expect(box!.x).toBeLessThan(viewport!.width / 2);
+  });
 });
