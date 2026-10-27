@@ -94,7 +94,7 @@ export default function LeafletMap({
   return (
     <div
       ref={containerRef}
-      className={cn("h-full min-h-56 w-full rounded-card", className)}
+      className={cn("relative isolate z-0 h-full min-h-56 w-full rounded-card", className)}
       aria-label="Map"
     />
   );
