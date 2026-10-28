@@ -17,11 +17,22 @@ desktop.ini
 *.log
 coverage/
 
-# Local env
+# Local env and secrets - never commit
 .env
-.env.local
-IndoBengkelFE/.env.local
-IndoBengkelBE/.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.secret
+secrets/
+.secrets/
+credentials.json
+service.json
 
 # Build output
 IndoBengkelFE/.next/
