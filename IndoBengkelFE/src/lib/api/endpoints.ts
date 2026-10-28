@@ -81,7 +81,4 @@ export const endpoints = {
     read: (id: string) => `/notifications/${id}/read`,
     readAll: "/notifications/read-all",
   },
-  demo: {
-    reset: "/demo/reset",
-  },
 } as const;

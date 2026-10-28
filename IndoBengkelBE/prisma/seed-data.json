@@ -82,15 +82,6 @@
       "createdAt": "2025-12-26T03:00:00.000Z"
     }
   ],
-  "passwords": {
-    "rina@indobengkel.test": "password123",
-    "budi@indobengkel.test": "password123",
-    "siti@indobengkel.test": "password123",
-    "dewi@indobengkel.test": "password123",
-    "agus@indobengkel.test": "password123",
-    "maya@indobengkel.test": "password123",
-    "andi@kawahmotor.test": "password123"
-  },
   "workshops": [
     {
       "id": "ws-01",

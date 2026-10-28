@@ -3,7 +3,7 @@
  *
  * The upload step talks to `/api/uploads`. When that endpoint is not writable
  * (for example a read-only deploy) the optimised image is returned as a data
- * URL so the demo keeps working offline.
+ * URL so uploads keep working when the upload endpoint is unavailable.
  */
 
 export const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;

@@ -46,7 +46,7 @@ export default function ForgotPasswordPage() {
           <p className="mt-3 font-heading text-lg font-semibold text-fg">{t("auth.resetSent")}</p>
           <p className="mt-1 text-xs leading-relaxed text-muted">{t("auth.resetSentBody")}</p>
           <Button asChild className="mt-5 w-full">
-            <Link href="/auth/reset-password?token=demo-token">{t("auth.resetPassword")}</Link>
+            <Link href="/auth/login">{t("auth.backToLogin")}</Link>
           </Button>
         </div>
       ) : (
@@ -57,7 +57,6 @@ export default function ForgotPasswordPage() {
               required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="rina@indobengkel.test"
               autoComplete="email"
             />
           </Field>

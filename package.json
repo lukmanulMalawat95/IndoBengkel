@@ -11,7 +11,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report",
-    "stack:up": "docker compose up -d --build",
+    "stack:up": "docker compose up -d --build && docker compose exec -T backend node dist/src/seed/run.js",
+    "stack:seed": "docker compose exec -T backend node dist/src/seed/run.js",
     "stack:down": "docker compose down"
   },
   "keywords": [],

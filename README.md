@@ -2,7 +2,7 @@
 
 IndoBengkel connects vehicle owners with motorcycle and car workshops: discover a nearby workshop, book a service, follow the repair, shop parts in **BengkelShop**, and chat with the workshop.
 
-This repository is the **working local baseline**: a Next.js frontend, a NestJS API, PostgreSQL, seeded demo data, real image uploads (file + camera), and one Docker Compose command to run everything.
+This repository is the **working local baseline**: a Next.js frontend, a NestJS API, PostgreSQL, an explicit development seed, real image uploads (file + camera), and one Docker Compose command to run everything.
 
 > Design and product specifications live in `docs/`. The runtime status is documented in `docs/TSD.md` and `docs/PLAN.md` v1.2.
 
@@ -17,46 +17,45 @@ This repository is the **working local baseline**: a Next.js frontend, a NestJS 
 | Database | PostgreSQL 16 + PostGIS 3.4 (`postgis/postgis:16-3.4-alpine`) |
 | Rate limiting | Redis 7 (`redis:7-alpine`), shared counters; falls back to process memory when Redis is unavailable |
 | Uploads | `POST /api/uploads` → `public/uploads` volume, served by `GET /api/uploads/[name]` |
-| Payments | Fake provider by default, Midtrans Core API adapter + signed webhook, VA/transfer/QRIS instructions, cron expiry |
+| Payments | Local test provider by default, Midtrans Core API adapter + signed webhook, VA/transfer/QRIS instructions, cron expiry |
 | Orchestration | Docker Compose (`db`, `redis`, `backend`, `frontend`) |
-| Demo data | 24 workshops (23 active), 30 users, 372 services, 72 mechanics, 120 products, 40 service orders, 12 orders, 84 reviews |
+| Development seed | 24 workshops (23 active), 30 users, 372 services, 72 mechanics, 120 products, 40 service orders, 12 orders, 84 reviews |
 
-Production integrations that are **not** wired yet: Midtrans, Mailpit/email
-outbox, MinIO/S3 presigned uploads, and Socket.IO. See "Known gaps".
+Production integrations that are **not** wired yet: live Midtrans credentials, email delivery, MinIO/S3 presigned uploads, and Socket.IO. See "Known gaps".
 
 ---
 
 ## Quick start (Docker)
 
 ```bash
-docker compose up --build
+npm run stack:up
 ```
 
-Open **http://localhost:3000**.
+This builds the stack, applies migrations, and runs the development seed **once**. Open **http://localhost:3000**.
 
-The backend applies versioned migrations (`prisma migrate deploy`), seeds the database (this **resets demo data to the snapshot**), then starts the API on port 4000. PostgreSQL is exposed on host port **55432** because 5432 is commonly occupied by a local PostgreSQL install. Redis is exposed on **127.0.0.1:6379** and holds the shared rate-limit counters; it is not persisted because the counters are ephemeral. If a local Redis already occupies 6379, change the host mapping in `docker-compose.yml`; host-run tests then need the matching `REDIS_URL`.
+The backend applies versioned migrations (`prisma migrate deploy`) and then starts the API on port 4000. It does **not** seed on startup; `npm run stack:seed` runs the seed explicitly and is destructive. PostgreSQL is exposed on host port **55432** because 5432 is commonly occupied by a local PostgreSQL install. Redis is exposed on **127.0.0.1:6379** and holds the shared rate-limit counters; it is not persisted because the counters are ephemeral. If a local Redis already occupies 6379, change the host mapping in `docker-compose.yml`; host-run tests then need the matching `REDIS_URL`.
 
 ```bash
 docker compose ps
 docker compose logs -f backend
-docker compose down          # keep database + uploads
-docker compose down -v       # reset database + uploads
+npm run stack:seed          # reset the local database to the seed snapshot
+docker compose down         # keep database + uploads
+docker compose down -v      # reset database + uploads
 ```
 
 Health check: **http://localhost:4000/api/v1/health**
 
-### Demo accounts
+### Development seed
 
-All seeded users use password `password123`.
+The seed is for local development and automated tests only. It truncates the
+application tables and recreates the dataset in
+`IndoBengkelBE/prisma/seed-data.json`. Set `SEED_PASSWORD` before seeding to
+override the local default password, for example
+`SEED_PASSWORD=your-local-password npm run stack:up` (PowerShell: set
+`$env:SEED_PASSWORD` first). Never run the seed against a production database.
 
-| Role | Email |
-|---|---|
-| Customer | `rina@indobengkel.test` |
-| Workshop owner | `andi@kawahmotor.test` (Kawah Motor Works) |
-| Other owners | `ownerN@indobengkel.test` where N is the seeded workshop index |
-| Other customers | See `IndoBengkelBE/prisma/seed-data.json` |
-
-The login screen also has one-click demo buttons for a customer and the workshop owner.
+The login page has no pre-filled accounts or one-click role switcher. Sign in
+with an email from the seed data and the password you seeded.
 
 ---
 
@@ -76,9 +75,16 @@ npm install
 npx prisma generate
 npm run db:migrate
 npm run build
-npm run db:seed
+SEED_PASSWORD=your-local-password npm run db:seed
 # .env: REDIS_URL=redis://localhost:6379/0 (optional; memory fallback without it)
 npm run start:dev
+```
+
+On PowerShell, set the variable first:
+
+```powershell
+$env:SEED_PASSWORD = "your-local-password"
+npm run db:seed
 ```
 
 Frontend:
@@ -87,18 +93,12 @@ Frontend:
 cd IndoBengkelFE
 npm install
 # .env.local
-# NEXT_PUBLIC_USE_MOCK_API=false
 # API_INTERNAL_URL=http://localhost:4000
 npm run dev
 ```
 
-`IndoBengkelFE` can also run without a backend using the original mock API:
-
-```
-NEXT_PUBLIC_USE_MOCK_API=true
-```
-
-That mode stores data in `localStorage` and is intended only for design/demo work.
+The frontend always talks to the NestJS API through the Next.js rewrite; there is
+no standalone local-storage mode.
 
 ---
 
@@ -110,12 +110,13 @@ That mode stores data in `localStorage` and is intended only for design/demo wor
 | `npm run typecheck` | FE / BE | TypeScript check |
 | `npm test` | BE | API integration suites (isolated test schema) |
 | `npm run test:e2e` | root | Playwright browser suite against the Docker stack |
+| `npm run stack:up` | root | Build/start the stack and seed it once |
+| `npm run stack:seed` | root | Reset the local database to the seed snapshot |
 | `npm run db:seed` | BE | Reset the database to the seed snapshot |
 | `npm run db:migrate` | BE | Apply pending migrations (`prisma migrate deploy`) |
 | `npm run db:migrate:dev -- --name <name>` | BE | Create + apply a migration from `schema.prisma` |
 | `npm run db:status` | BE | Show applied/pending migrations |
 | `npm run start:dev` | BE | Nest watch mode |
-| `POST /api/v1/demo/reset` | API | Reset demo data to the seed snapshot |
 
 ### Database changes
 
@@ -143,13 +144,6 @@ cd IndoBengkelBE
 npx prisma migrate resolve --applied 0_init
 npm run db:migrate                                 # applies 1_postgis_workshop_location
 ```
-| `docker compose up -d --build` | root | Rebuild and start the full stack |
-
-Reset demo data:
-
-```bash
-curl -X POST http://localhost:4000/api/v1/demo/reset
-```
 
 ---
 
@@ -162,11 +156,11 @@ Main groups:
 - `auth` — login, register, logout, session, locale
 - `workshops`, `products` — public catalogue, availability
 - `vehicles` — customer garage
-- `service-orders` — booking, estimate approval, pending invoice payment + fake simulation
-- `cart`, `orders`, `reviews` — BengkelShop checkout, fake payment, reviews
+- `service-orders` — booking, estimate approval, pending invoice payment + local settlement
+- `cart`, `orders`, `reviews` — BengkelShop checkout, local payment, reviews
 - `workshop/*` — owner console (profile, mechanics, services, products, bookings, orders, reviews, dashboard)
 - `conversations`, `notifications` — chat and in-app notifications
-- `demo/reset`, `health`
+- `health`
 
 Responses use `{ data }` for single resources and `{ data, meta }` for paginated lists. Errors use:
 
@@ -176,14 +170,14 @@ Responses use `{ data }` for single resources and `{ data, meta }` for paginated
 
 ---
 
-## Payments (fake-first)
+## Payments (local-first)
 
 `PAYMENT_PROVIDER=fake` is the default for local, Docker and CI. It never makes a
-network call and only produces demo instructions, so it must never be used for
-real money.
+network call and only produces local test instructions, so it must never be used
+for real money.
 
 - `POST /orders` creates the order and a pending `Payment` (VA, transfer or QRIS).
-- `POST /orders/:id/pay` simulates settlement for the fake provider. It is
+- `POST /orders/:id/pay` settles a payment for the local test provider. It is
   idempotent when the order is already paid and returns `409` for a cancelled or
   expired order.
 - `POST /service-orders/:id/pay` creates or refreshes one pending invoice payment;
@@ -198,13 +192,13 @@ real money.
 - Midtrans calls `POST /api/v1/payments/midtrans/notification`. The endpoint is
   public, exempt from CSRF, verifies
   `SHA512(order_id + status_code + gross_amount + serverKey)`, checks the amount,
-  and applies the same locked state transitions as the fake simulation.
+  and applies the same locked state transitions as the local settlement.
 - Optional Midtrans settings: `MIDTRANS_IS_PRODUCTION=false`,
   `MIDTRANS_VA_BANK=bca`, `MIDTRANS_QRIS_ACQUIRER=gopay`.
 
-The frontend shows the simulate button only when `payment.provider === "fake"`,
-renders Midtrans QRIS as an image, and polls pending payments until they are paid
-or expired.
+The frontend shows the local settlement button only when
+`payment.provider === "fake"`, renders Midtrans QRIS as an image, and polls
+pending payments until they are paid or expired.
 
 ---
 
@@ -238,7 +232,8 @@ These are intentionally deferred to production hardening:
 
 - Midtrans reconciliation/refund flow (adapter, signed webhook and settlement
   are in place; refunds and payment-event history are not)
-- Email delivery/Mailpit and email verification enforcement
+- Email delivery and real email-verification tokens (the current endpoint only
+  verifies the signed-in account)
 - Socket.IO realtime chat (currently REST + refetch)
 - MinIO/S3 presigned uploads (uploads are stored on the web tier's local disk;
   ownership is tracked in the `Upload` table)

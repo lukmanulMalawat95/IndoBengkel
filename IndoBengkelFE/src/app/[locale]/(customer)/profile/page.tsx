@@ -7,7 +7,6 @@ import {
   Languages,
   LogOut,
   Moon,
-  RefreshCcw,
   Sun,
   UserRound,
   Wrench,
@@ -31,7 +30,6 @@ import {
 import { PageHeader } from "@/components/ui/page-header";
 import { useAuth } from "@/features/auth/auth-provider";
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
-import { useResetDemo } from "@/lib/api/hooks";
 import type { UserRole } from "@/lib/api/types";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -41,22 +39,14 @@ const roleIcons: Record<UserRole, React.ComponentType<{ className?: string }>> =
   workshop_owner: Wrench,
 };
 
-const roleHomes: Record<UserRole, string> = {
-  customer: "/",
-  workshop_owner: "/workshop",
-};
-
 export default function ProfilePage() {
   const t = useTranslations();
   const locale = useLocale();
   const pathname = usePathname();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
-  const { user, session, isLoading, logout, switchDemoRole, verifyEmail } = useAuth();
-  const resetDemo = useResetDemo();
+  const { user, isLoading, logout, verifyEmail } = useAuth();
   const [logoutOpen, setLogoutOpen] = useState(false);
-  const [resetOpen, setResetOpen] = useState(false);
-  const [switching, setSwitching] = useState<UserRole | null>(null);
 
   if (isLoading) return null;
   if (!user) {
@@ -82,20 +72,6 @@ export default function ProfilePage() {
     if (next === locale) return;
     document.cookie = `NEXT_LOCALE=${next};path=/;max-age=31536000;samesite=lax`;
     router.replace(pathname, { locale: next });
-  };
-
-  const switchRole = async (role: UserRole) => {
-    if (role === user.role) return;
-    setSwitching(role);
-    try {
-      await switchDemoRole(role);
-      toast.success(t("auth.loginSuccess"));
-      router.push(roleHomes[role]);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("toasts.error"));
-    } finally {
-      setSwitching(null);
-    }
   };
 
   return (
@@ -207,50 +183,6 @@ export default function ProfilePage() {
               </div>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("profile.demo")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-xs leading-relaxed text-muted">{t("profile.demoHint")}</p>
-              <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                {(["customer", "workshop_owner"] as UserRole[]).map((role) => {
-                  const Icon = roleIcons[role];
-                  const active = role === user.role;
-                  return (
-                    <button
-                      key={role}
-                      type="button"
-                      disabled={active || switching !== null}
-                      onClick={() => switchRole(role)}
-                      className={cn(
-                        "rounded-card border p-3 text-left transition-colors",
-                        active
-                          ? "border-accent/40 bg-accent/5"
-                          : "border-line bg-surface hover:border-lineStrong",
-                      )}
-                    >
-                      <span className="flex items-center gap-2 text-xs font-medium text-fg">
-                        <Icon className="h-4 w-4 text-accent" />
-                        {role === "customer"
-                          ? t("profile.customerDemo")
-                          : t("profile.workshopDemo")}
-                      </span>
-                      <span className="mt-1 block text-[10px] text-muted">
-                        {t(`roles.${role}`)}
-                      </span>
-                      {switching === role ? (
-                        <span className="mt-2 block text-[10px] text-accent">{t("common.loading")}</span>
-                      ) : active ? (
-                        <span className="mt-2 block text-[10px] text-accent">{t("common.now")}</span>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         <aside className="space-y-4">
@@ -263,14 +195,6 @@ export default function ProfilePage() {
                 <span className="text-muted">{t("profile.currentSession")}</span>
                 <Badge variant="success">{t("common.now")}</Badge>
               </div>
-              <Info
-                label="Session"
-                value={session ? `${session.csrfToken.slice(0, 12)}…` : "—"}
-              />
-              <Info
-                label={t("profile.expires")}
-                value={session ? formatDate(session.accessTokenExpiresAt) : "—"}
-              />
               <Button
                 variant="secondary"
                 size="sm"
@@ -289,7 +213,7 @@ export default function ProfilePage() {
             <CardContent className="space-y-2 text-xs">
               <div className="flex justify-between gap-3">
                 <span className="text-muted">{t("profile.version")}</span>
-                <span className="text-fg">0.1.0 · demo</span>
+                <span className="text-fg">0.1.0</span>
               </div>
               <div className="flex justify-between gap-3">
                 <span className="text-muted">{t("profile.links")}</span>
@@ -300,25 +224,8 @@ export default function ProfilePage() {
                 </span>
               </div>
               <p className="pt-2 text-[10px] leading-relaxed text-faint">
-                {t("common.demoData")} · {t("common.idrOnly")}
+                {t("common.idrOnly")}
               </p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-danger/20">
-            <CardHeader>
-              <CardTitle>{t("profile.dangerZone")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-xs leading-relaxed text-muted">{t("profile.resetDemoBody")}</p>
-              <Button
-                variant="danger"
-                size="sm"
-                className="mt-3 w-full"
-                onClick={() => setResetOpen(true)}
-              >
-                <RefreshCcw className="h-4 w-4" /> {t("profile.resetDemo")}
-              </Button>
             </CardContent>
           </Card>
 
@@ -355,35 +262,6 @@ export default function ProfilePage() {
               }}
             >
               <LogOut className="h-4 w-4" /> {t("profile.logout")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("profile.resetDemo")}</DialogTitle>
-            <DialogDescription>{t("profile.resetDemoConfirm")}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setResetOpen(false)}>
-              {t("common.cancel")}
-            </Button>
-            <Button
-              variant="danger"
-              disabled={resetDemo.isPending}
-              onClick={async () => {
-                try {
-                  await resetDemo.mutateAsync();
-                  setResetOpen(false);
-                  toast.success(t("profile.resetDemoSuccess"));
-                } catch (error) {
-                  toast.error(error instanceof Error ? error.message : t("toasts.error"));
-                }
-              }}
-            >
-              {t("profile.resetDemo")}
             </Button>
           </DialogFooter>
         </DialogContent>

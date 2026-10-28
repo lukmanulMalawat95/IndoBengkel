@@ -102,7 +102,7 @@ function matchesSignature(bytes: Buffer, extension: string) {
 }
 
 /**
- * Local demo upload endpoint.
+ * Local upload endpoint.
  *
  * Only an authenticated user may write a file. Files are written to
  * `public/uploads` and served back through the matching GET handler on this

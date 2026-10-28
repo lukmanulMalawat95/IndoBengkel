@@ -591,11 +591,3 @@ export function useWorkshopDashboard() {
     queryFn: () => api.getWorkshopDashboard(),
   });
 }
-
-export function useResetDemo() {
-  const invalidate = useInvalidateAll();
-  return useMutation({
-    mutationFn: () => api.resetDemo(),
-    onSuccess: invalidate,
-  });
-}

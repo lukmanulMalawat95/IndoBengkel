@@ -107,7 +107,7 @@ export async function registerWorkshop(
   const owner = registered.body.data;
 
   if (options.activate !== false) {
-    await agent.post(`${API}/auth/verify-email`).send({ userId: owner.id }).expect(201);
+    await agent.post(`${API}/auth/verify-email`).expect(201);
     await agent
       .patch(`${API}/workshop/me`)
       .send({ coverUrl: "https://example.test/cover.jpg" })

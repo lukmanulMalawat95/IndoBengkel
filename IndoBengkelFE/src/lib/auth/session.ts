@@ -7,12 +7,7 @@ function isBrowser() {
 }
 
 export function createSession(user: User): Session {
-  const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-  return {
-    user,
-    accessTokenExpiresAt: expires,
-    csrfToken: `csrf-${Math.random().toString(36).slice(2)}`,
-  };
+  return { user };
 }
 
 export function getStoredSession(): Session | null {

@@ -1,4 +1,3 @@
-import { getStoredSession } from "@/lib/auth/session";
 import { ApiError } from "./errors";
 
 const API_BASE = "/api/v1";
@@ -29,13 +28,10 @@ export async function apiFetch<T>(
   init: RequestInit = {},
   options: { preserveEnvelope?: boolean } = {},
 ): Promise<T> {
-  const session = getStoredSession();
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  // Double-submit token issued by the API. Falls back to the mock session token
-  // when the app runs in localStorage mock mode.
-  const csrfToken = readCookie(CSRF_COOKIE) ?? session?.csrfToken;
+  const csrfToken = readCookie(CSRF_COOKIE);
   if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
 
   const response = await fetch(`${API_BASE}${path}`, {

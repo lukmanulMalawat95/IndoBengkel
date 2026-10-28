@@ -15,14 +15,12 @@ import type {
   Workshop,
   WorkshopQuery,
 } from "./types";
+import type { ApiClient } from "./api-client";
 import { endpoints } from "./endpoints";
 import { apiFetch, buildQuery } from "./http";
-import { mockApi } from "./mock/handlers";
 
-export const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API !== "false";
-
-function createRestApi() {
-  const restApi = {
+function createRestApi(): ApiClient {
+  const restApi: ApiClient = {
     login: (input: LoginInput) =>
       apiFetch(endpoints.auth.login, { method: "POST", body: JSON.stringify(input) }),
     registerCustomer: (input: RegisterCustomerInput) =>
@@ -30,8 +28,7 @@ function createRestApi() {
     registerWorkshop: (input: RegisterWorkshopInput) =>
       apiFetch(endpoints.auth.registerWorkshop, { method: "POST", body: JSON.stringify(input) }),
     me: () => apiFetch(endpoints.auth.me),
-    verifyEmail: (userId: string) =>
-      apiFetch(endpoints.auth.verifyEmail, { method: "POST", body: JSON.stringify({ userId }) }),
+    verifyEmail: () => apiFetch(endpoints.auth.verifyEmail, { method: "POST" }),
     updateLocale: (locale: "en" | "id") =>
       apiFetch("/me/locale", { method: "PATCH", body: JSON.stringify({ locale }) }),
 
@@ -208,11 +205,9 @@ function createRestApi() {
       apiFetch(endpoints.notifications.read(id), { method: "POST" }),
     markAllNotificationsRead: () =>
       apiFetch(endpoints.notifications.readAll, { method: "POST" }),
-
-    resetDemo: () => apiFetch(endpoints.demo.reset, { method: "POST" }),
   };
 
-  return restApi as unknown as typeof mockApi;
+  return restApi;
 }
 
-export const api = USE_MOCK_API ? mockApi : createRestApi();
+export const api = createRestApi();

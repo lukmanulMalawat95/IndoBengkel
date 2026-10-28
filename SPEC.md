@@ -13,7 +13,7 @@ IndoBengkel adalah aplikasi web bengkel online dengan dua role pengguna: **Custo
 
 | Area | Keputusan |
 |---|---|
-| Tahap | MVP demo, arsitektur siap produksi |
+| Tahap | Local baseline, arsitektur siap produksi |
 | Mata uang | IDR saja, semua nilai uang integer rupiah (tanpa desimal) |
 | Geografi | Operasional Indonesia; koordinat & country_code global agar bisa ekspansi |
 | Pengiriman | **Pickup di bengkel (gratis)** atau **ekspedisi** (JNE/J&T/SiCepat/AnterAja, ongkir berbasis berat, resi manual) |
@@ -502,7 +502,7 @@ Font: **Space Grotesk** (heading, next/font) + **Inter** (body). Radius 10px (ka
 
 | Risiko | Dampak | Mitigasi v1 |
 |---|---|---|
-| Tanpa refund | Order `paid` gagal dipenuhi tidak punya jalur uang di aplikasi | Prosedur CLI + manual, didokumentasikan; demo hindari skenario ini |
+| Tanpa refund | Order `paid` gagal dipenuhi tidak punya jalur uang di aplikasi | Prosedur CLI + manual, didokumentasikan; baseline lokal menghindari skenario ini |
 | Tanpa approval bengkel | Bengkel fiktif/spam | Verifikasi email + status draft/active/suspended yang dikelola bengkel; tidak ada admin platform |
 | Ongkir/resi manual | Ongkir tidak akurat vs tarif kurir; resi bisa salah | Tarif transparan dihitung dari berat; resi wajib sebelum `shipped`; customer konfirmasi diterima |
 | Tanpa ledger payout | Rekonsiliasi manual | Export CSV; di luar scope MVP |

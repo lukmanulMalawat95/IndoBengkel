@@ -8,7 +8,7 @@ export const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Cookies can only be marked `Secure` when the app is served over HTTPS.
- * The local Docker demo runs on http://localhost, so this stays opt-in instead
+ * The local Docker stack runs on http://localhost, so this stays opt-in instead
  * of keying off NODE_ENV (the image sets NODE_ENV=production).
  */
 export function secureCookies() {

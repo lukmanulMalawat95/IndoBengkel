@@ -94,7 +94,7 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-8 text-xs text-faint">
           <div className="flex items-center gap-2">
             <Store className="h-4 w-4 text-accent" />
-            <span>IndoBengkel · {t("common.demoData")}</span>
+            <span>IndoBengkel</span>
           </div>
           <p>{t("common.pickupOrDelivery")} · {t("common.idrOnly")}</p>
         </div>

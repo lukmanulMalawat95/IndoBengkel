@@ -35,17 +35,11 @@ interface AuthContextValue {
   registerWorkshop: (input: RegisterWorkshopInput) => Promise<User>;
   verifyEmail: () => Promise<User>;
   logout: () => void;
-  switchDemoRole: (role: UserRole) => Promise<User>;
   updateUser: (user: User) => void;
   hasRole: (role: UserRole) => boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-const demoEmails: Record<UserRole, string> = {
-  customer: "rina@indobengkel.test",
-  workshop_owner: "andi@kawahmotor.test",
-};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
@@ -95,7 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const verifyEmail = useCallback(async () => {
     if (!session) throw new Error("No session");
-    const user = await api.verifyEmail(session.user.id);
+    const user = await api.verifyEmail();
     updateStoredUser(user);
     setSession({ ...session, user });
     return user;
@@ -106,13 +100,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(null);
     queryClient.clear();
   }, [queryClient]);
-
-  const switchDemoRole = useCallback(
-    async (role: UserRole) => {
-      return login(demoEmails[role], "password123");
-    },
-    [login],
-  );
 
   const updateUser = useCallback((user: User) => {
     updateStoredUser(user);
@@ -130,7 +117,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       registerWorkshop,
       verifyEmail,
       logout,
-      switchDemoRole,
       updateUser,
       hasRole: (role: UserRole) => session?.user.role === role,
     }),
@@ -142,7 +128,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       registerWorkshop,
       verifyEmail,
       logout,
-      switchDemoRole,
       updateUser,
     ],
   );

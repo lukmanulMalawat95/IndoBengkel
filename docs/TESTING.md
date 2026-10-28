@@ -17,7 +17,7 @@ cd IndoBengkelBE && npm test
 cd IndoBengkelBE && npm run test:watch
 ```
 
-The suite does **not** touch the demo schema. `test/setup-env.ts` rewrites
+The suite does **not** touch the local development schema. `test/setup-env.ts` rewrites
 `DATABASE_URL` to the `indobengkel_test` PostgreSQL schema, and
 `test/global-setup.ts` runs `prisma db push` plus the curated seed before the
 first test. This is intentional: the schema is disposable, so replaying
@@ -68,15 +68,16 @@ directly and assert stock, status and notifications deterministically.
 ## Browser E2E
 
 ```bash
-npm run stack:up     # docker compose up -d --build, waits for seed
+npm run stack:up     # build, start and seed the Docker stack once
 npm run test:e2e     # Playwright, Chromium + mobile project
 ```
 
-`E2E_BASE_URL` overrides the default `http://localhost:3000`; the API used by
-the reset hook can be pointed elsewhere with `E2E_API_URL`. A global setup calls
-`POST /api/v1/demo/reset` so every run starts from the curated snapshot. The
-suite runs with one worker because the specs share the demo database, and each
-spec creates unique users, bookings and orders through the UI.
+`E2E_BASE_URL` overrides the default `http://localhost:3000`; the API health
+check can be pointed elsewhere with `E2E_API_URL`. A global setup waits for the
+API and runs the seed inside the Docker backend so every run starts from the
+curated snapshot. The suite runs with one worker because the specs share the
+local database, and each spec creates unique users, bookings and orders through
+the UI.
 
 Covered journeys (9 tests):
 
@@ -105,8 +106,9 @@ Open the report with `npm run test:e2e:report`.
    Redis).
 2. **frontend** — typecheck and production build.
 3. **e2e** — `docker compose up -d --build`, waits for `/api/v1/health` and the
-   web app, installs Chromium and runs Playwright; uploads the report and stack
-   logs on failure and always tears the stack down.
+   web app, then Playwright's global setup seeds the backend and runs the
+   browser suite; uploads the report and stack logs on failure and always tears
+   the stack down.
 
 ---
 
@@ -118,9 +120,9 @@ behaviour.
 
 | Control | Behaviour |
 |---|---|
-| CSRF | Double-submit cookie `ib_csrf` + `X-CSRF-Token` on every authenticated mutation. Bootstrap endpoints (login, register, reset) are exempt; logout and purchases are not. |
+| CSRF | Double-submit cookie `ib_csrf` + `X-CSRF-Token` on every authenticated mutation. Bootstrap endpoints (login, register) are exempt; logout and purchases are not. |
 | Session cookie | `ib_session`, httpOnly, SameSite=Lax, 7-day max age; `Secure` when `COOKIE_SECURE=true`. |
-| Rate limit | Fixed window per IP (1200/min globally) plus tighter per-route buckets: login/register 10/min per IP+email, chat send 30/min, reviews 10/min, demo reset 3/min. Counters live in Redis when `REDIS_URL` is set (shared across replicas) and in process memory otherwise. |
+| Rate limit | Fixed window per IP (1200/min globally) plus tighter per-route buckets: login/register 10/min per IP+email, chat send 30/min, reviews 10/min. Counters live in Redis when `REDIS_URL` is set (shared across replicas) and in process memory otherwise. |
 | Uploads | `POST /api/uploads` validates the session against `GET /auth/me`, enforces 5 MB and jpg/png/webp magic bytes, randomises the filename, then records the owner through `POST /api/v1/uploads`. Every authenticated mutation rejects `/api/uploads/...` references the caller does not own (`UPLOAD_NOT_OWNED`). |
 | Headers | Helmet (CSP off for the JSON API, CORP cross-origin); CORS restricted to `CORS_ORIGIN` and `X-CSRF-Token`. |
 

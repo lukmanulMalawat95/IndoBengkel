@@ -60,12 +60,10 @@ export class AuthController {
     return { data: await this.auth.me(user.id) };
   }
 
-  @Public()
-  @SkipCsrf()
-  @RateLimit({ limit: 20 })
+  @RateLimit({ limit: 10 })
   @Post("auth/verify-email")
-  async verifyEmail(@Body() body: { userId?: string }) {
-    return { data: await this.auth.verifyEmail(String(body.userId ?? "")) };
+  async verifyEmail(@CurrentUser() user: any) {
+    return { data: await this.auth.verifyEmail(user.id) };
   }
 
   @Public()
@@ -73,7 +71,7 @@ export class AuthController {
   @RateLimit({ limit: 5, perEmail: true })
   @Post("auth/forgot-password")
   async forgotPassword(@Body() body: { email?: string }) {
-    // Demo mailer: never reveal whether an address exists.
+    // Never reveal whether an address exists.
     void body;
     return { data: { ok: true } };
   }
@@ -86,7 +84,7 @@ export class AuthController {
     if (!body.token || String(body.password ?? "").length < 8) {
       throw new ApiError("VALIDATION_ERROR", "A reset token and a password of 8+ characters are required.", 422);
     }
-    // The demo build has no email delivery; the endpoint keeps the contract ready.
+    // Email delivery is not configured; the endpoint keeps the contract ready.
     return { data: { ok: true } };
   }
 

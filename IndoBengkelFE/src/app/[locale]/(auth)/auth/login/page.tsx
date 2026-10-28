@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, EyeOff, Loader2, LogIn, UserRound, Wrench } from "lucide-react";
+import { Eye, EyeOff, Loader2, LogIn } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
@@ -13,7 +13,6 @@ import { PageLoading } from "@/components/ui/page-loading";
 import { useAuth } from "@/features/auth/auth-provider";
 import { Link, useRouter } from "@/i18n/navigation";
 import type { UserRole } from "@/lib/api/types";
-import { cn } from "@/lib/utils";
 
 const roleHomes: Record<UserRole, string> = {
   customer: "/",
@@ -25,13 +24,12 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("returnTo");
-  const { user, isLoading, login, switchDemoRole } = useAuth();
+  const { user, isLoading, login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
-  const [demoPending, setDemoPending] = useState<UserRole | null>(null);
 
   useEffect(() => {
     if (!isLoading && user) router.replace(returnTo ?? roleHomes[user.role]);
@@ -56,20 +54,6 @@ function LoginContent() {
     }
   };
 
-  const useDemo = async (role: UserRole) => {
-    setError("");
-    setDemoPending(role);
-    try {
-      const nextUser = await switchDemoRole(role);
-      toast.success(t("auth.loginSuccess"));
-      router.replace(returnTo ?? roleHomes[nextUser.role]);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : t("auth.error"));
-    } finally {
-      setDemoPending(null);
-    }
-  };
-
   return (
     <Card className="p-6 sm:p-7">
       <div className="mb-6">
@@ -87,7 +71,6 @@ function LoginContent() {
             required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            placeholder="rina@indobengkel.test"
           />
         </Field>
 
@@ -125,45 +108,6 @@ function LoginContent() {
           {pending ? t("auth.loggingIn") : t("auth.login")}
         </Button>
       </form>
-
-      <div className="my-6 flex items-center gap-3">
-        <span className="h-px flex-1 bg-line" />
-        <span className="text-[10px] uppercase tracking-[0.18em] text-faint">{t("auth.demoAccounts")}</span>
-        <span className="h-px flex-1 bg-line" />
-      </div>
-
-      <div className="grid gap-2">
-        {(
-          [
-            { role: "customer" as UserRole, icon: UserRound, label: t("auth.customerDemo"), email: "rina@indobengkel.test" },
-            { role: "workshop_owner" as UserRole, icon: Wrench, label: t("auth.workshopDemo"), email: "andi@kawahmotor.test" },
-          ] as const
-        ).map((item) => (
-          <button
-            key={item.role}
-            type="button"
-            disabled={demoPending !== null}
-            onClick={() => useDemo(item.role)}
-            className={cn(
-              "flex items-center gap-3 rounded-input border border-line bg-surface2/50 p-3 text-left transition-colors hover:border-lineStrong disabled:opacity-60",
-            )}
-          >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full chip-accent">
-              {demoPending === item.role ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <item.icon className="h-3.5 w-3.5" />
-              )}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-xs font-medium text-fg">{item.label}</span>
-              <span className="block truncate text-[10px] text-faint">{item.email}</span>
-            </span>
-            <span className="shrink-0 text-[10px] text-accent">{t("auth.useDemo")}</span>
-          </button>
-        ))}
-      </div>
-      <p className="mt-3 text-[10px] leading-relaxed text-faint">{t("auth.demoHint")}</p>
 
       <div className="mt-6 space-y-2 border-t border-line pt-5 text-center text-xs text-muted">
         <p>

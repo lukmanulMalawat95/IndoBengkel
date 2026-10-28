@@ -8,7 +8,7 @@
 | Pemilik | Product Owner (kamu) |
 | Acuan | `SPEC.md` v1.0, `design/README.md` |
 | Bahasa produk | English (default) + Indonesian |
-| Runtime demo | Next.js 15 + NestJS 11 + PostgreSQL 16 + Prisma; mode mock tetap tersedia |
+| Runtime lokal | Next.js 15 + NestJS 11 + PostgreSQL 16 + Prisma |
 
 ---
 
@@ -16,9 +16,9 @@
 
 IndoBengkel adalah web app yang mempertemukan pemilik kendaraan dengan bengkel motor/mobil: mencari bengkel terdekat, booking service, membeli produk lewat **BengkelShop** (ambil sendiri di bengkel atau dikirim ekspedisi), melihat riwayat service kendaraan, memberi rating, dan berchat ria dengan bengkel.
 
-MVP ini dirancang sebagai **demo end-to-end dengan arsitektur siap produksi**: seluruh alur bisa dijalankan lewat `docker compose up` tanpa key eksternal (pembayaran fake, email lokal), dengan data seed yang cukup agar dashboard bengkel tidak terasa kosong.
+MVP ini dirancang sebagai **baseline lokal end-to-end dengan arsitektur siap produksi**: seluruh alur bisa dijalankan lewat `npm run stack:up` tanpa key eksternal (pembayaran local test, email lokal), dengan data seed yang cukup agar dashboard bengkel tidak terasa kosong.
 
-Runtime yang berjalan sekarang adalah **Next.js 15 + NestJS 11 + PostgreSQL 16 + PostGIS 3.4 + Prisma**, diorkestrasi Docker Compose. Auth memakai cookie sesi `httpOnly` dan tabel `sessions`; seluruh alur customer dan konsol bengkel memanggil `/api/v1`. Data seed berisi 24 bengkel (23 aktif), 30 user, 372 layanan, 72 montir, 120 produk, 40 service order, 12 order, dan 84 review. FE juga masih menyediakan **mode mock** (`NEXT_PUBLIC_USE_MOCK_API=true`) untuk demo tanpa backend. Pembayaran memakai fake provider secara default, dengan adapter Midtrans Core API + webhook bertanda tangan dan cron expiry; chat memakai polling/refetch, dan upload disimpan di disk lokal — MinIO/S3, Mailpit, dan Socket.IO tetap menjadi target produksi dan belum dijalankan.
+Runtime yang berjalan sekarang adalah **Next.js 15 + NestJS 11 + PostgreSQL 16 + PostGIS 3.4 + Prisma**, diorkestrasi Docker Compose. Auth memakai cookie sesi `httpOnly` dan tabel `sessions`; seluruh alur customer dan konsol bengkel memanggil `/api/v1`. Data seed berisi 24 bengkel (23 aktif), 30 user, 372 layanan, 72 montir, 120 produk, 40 service order, 12 order, dan 84 review. FE selalu memanggil API. Pembayaran memakai local test provider secara default, dengan adapter Midtrans Core API + webhook bertanda tangan dan cron expiry; chat memakai polling/refetch, dan upload disimpan di disk lokal — MinIO/S3, Mailpit, dan Socket.IO tetap menjadi target produksi dan belum dijalankan.
 
 Semua foto di produk ini **diunggah**, bukan ditempel sebagai URL: pengguna memilih file dari perangkat atau mengambil foto langsung dari kamera, gambar dikompresi di browser, dan progres unggah selalu terlihat.
 
@@ -56,7 +56,7 @@ Di sisi bengkel:
 | G4 | Bengkel dapat mengelola operasionalnya tanpa bantuan tim teknis | CRUD profil, montir, layanan, produk, order, chat, laporan |
 | G5 | Transparansi harga | Estimasi saat konfirmasi; invoice >150% wajib approval; checklist item berharga |
 | G6 | Komunikasi dua arah | Chat realtime dengan riwayat pesan |
-| G7 | Dapat didemokan tanpa ketergantungan vendor | Semua alur jalan dengan fake payment + Mailpit |
+| G7 | Dapat dijalankan tanpa ketergantungan vendor | Semua alur jalan dengan local test payment + Mailpit |
 | G8 | Laporan hanya untuk bengkel sendiri | Pendapatan jasa + produk, transaksi, layanan/produk terlaris, rating |
 | G9 | Media masuk tanpa URL | Semua field foto menerima file atau kamera, terkompresi, progres terlihat; sumber ≤12 MB |
 
@@ -313,7 +313,7 @@ Prioritas: **M** = Must, **S** = Should, **C** = Could (v1 hanya M/S).
 4. **Latency:** pencarian < 300 ms p95 pada dataset seed.
 5. **Security:** tidak ada temuan kritis dari checklist IDOR/XSS/CSRF/upload; semua endpoint terotorisasi.
 6. **Cold start:** `docker compose up` + migrate + seed berhasil di mesin bersih tanpa langkah manual di luar README.
-7. **Demo:** 1 skrip demo 10 menit berjalan tanpa error konsol.
+7. **Baseline:** 1 skrip baseline lokal 10 menit berjalan tanpa error konsol.
 8. **Media:** semua field foto (cover, galeri, montir, produk, kendaraan, service, chat) bisa diisi lewat file atau kamera, menampilkan progres, dan tetap tersimpan setelah reload.
 
 ---
@@ -331,8 +331,8 @@ Prioritas: **M** = Must, **S** = Should, **C** = Could (v1 hanya M/S).
 | A7 | Bengkel tayang tanpa approval; kualitas dijaga lewat report + suspend |
 | A8 | Tidak ada login montir; montir adalah data yang dikelola pemilik |
 | A9 | Satu bengkel satu lokasi; ekspansi cabang ditunda |
-| A10 | Tile OSM publik cukup untuk demo |
-| A11 | Runtime lokal memakai NestJS + PostgreSQL; mode mock `localStorage` dipertahankan hanya sebagai fallback demo FE |
+| A10 | Tile OSM publik cukup untuk baseline lokal |
+| A11 | Runtime lokal memakai NestJS + PostgreSQL; FE selalu memanggil API |
 | A12 | Upload lokal menulis ke `public/uploads` dan disajikan lewat `GET /api/uploads/[name]`; bila storage read-only, klien menyimpan gambar inline sebagai data URL |
 
 ---
@@ -343,7 +343,7 @@ Prioritas: **M** = Must, **S** = Should, **C** = Could (v1 hanya M/S).
 |---|---|---|
 | Tanpa refund | Kepercayaan customer turun; sengketa tak punya jalur | Dijelaskan di UI sebelum bayar; prosedur manual; prioritas pasca-MVP |
 | Tanpa approval bengkel | Bengkel fiktif/spam | Verifikasi email + status draft/active/suspended yang dikelola bengkel sendiri |
-| Data seed tidak meyakinkan | Demo terasa kosong | Seed kaya + gambar lokal + review realistis |
+| Data seed tidak meyakinkan | Baseline terasa kosong | Seed kaya + gambar lokal + review realistis |
 | Estimasi vs invoice | Sengketa harga | Approval >150% + checklist item transparan |
 | Pickup code ditebak | Barang salah ambil | 6 karakter acak, verifikasi petugas, order harus `ready_for_pickup` & fulfillment pickup |
 | Resi salah/tidak diisi | Customer tidak bisa melacak | Resi wajib sebelum `shipped`; customer konfirmasi diterima; notifikasi otomatis |
@@ -351,8 +351,8 @@ Prioritas: **M** = Must, **S** = Should, **C** = Could (v1 hanya M/S).
 | Bengkel suspended saat ada order aktif | Order menggantung | Order tetap bisa diselesaikan; bengkel tidak muncul di pencarian & tidak bisa terima order baru |
 | Timezone | Slot meleset | Simpan UTC; semua kalkulasi slot memakai `workshops.timezone` |
 | Field gambar berupa URL | Pengguna tidak bisa memasukkan foto asli; data mudah basi | Uploader seragam (file + kamera) dengan kompresi dan progres |
-| Storage demo read-only | Upload gagal saat deploy | Fallback data URL inline + pesan jelas; produksi memakai S3/MinIO |
-| Kuota `localStorage` saat fallback mock | Data demo gagal disimpan | Mode utama memakai PostgreSQL; `saveDb` mock melaporkan error kuota |
+| Storage lokal read-only | Upload gagal saat deploy | Fallback data URL inline + pesan jelas; produksi memakai S3/MinIO |
+| Seed destruktif | Data lokal hilang jika salah dijalankan | Seed hanya eksplisit untuk lokal/test; container produksi tidak seed saat start |
 | Tema terang kehilangan kontras | UI tidak terbaca | Token Day Shift olive diuji kontras AA |
 | Spasi kategori Home tidak presisi | UI terasa amatir | Grid 4 kolom sama lebar + `.chip-accent`; diuji 360–1440 px |
 
@@ -362,14 +362,14 @@ Prioritas: **M** = Must, **S** = Should, **C** = Could (v1 hanya M/S).
 
 - [ ] Semua US berprioritas **M** diterima.
 - [ ] Semua acceptance criteria di FSD lulus.
-- [ ] `docker compose up` bersih + seed berhasil dari nol.
+- [ ] `npm run stack:up` bersih + seed berhasil dari nol.
 - [ ] EN & ID lengkap untuk semua layar yang dirilis.
 - [ ] Playwright lulus untuk 6 alur utama.
 - [ ] Checklist keamanan lulus (IDOR, CSRF, rate limit, upload, webhook signature).
-- [ ] Tidak ada error konsol di alur demo.
+- [ ] Tidak ada error konsol di alur baseline lokal.
 - [ ] Semua field foto memakai uploader yang sama (file + kamera) dengan progres; tidak ada input URL gambar.
 - [ ] Night Shift dan Day Shift lulus kontras AA dan tidak menghasilkan horizontal scroll di 360 px.
-- [ ] README berisi langkah jalan, akun seed, dan skrip demo.
+- [ ] README berisi langkah jalan, akun seed, dan skrip baseline lokal.
 - [ ] `SPEC.md`, `FSD.md`, `TSD.md`, `PLAN.md` diperbarui bila ada penyimpangan.
 
 ---
@@ -394,4 +394,4 @@ Prioritas: **M** = Must, **S** = Should, **C** = Could (v1 hanya M/S).
 | Night Shift | Nama design system (dark + lime) |
 | Day Shift | Varian terang dari design system; aksen olive `#587300` |
 | Upload pipeline | Alur baca → kompresi → unggah → selesai untuk satu gambar, dengan progres per tahap |
-| Fallback inline | Gambar disimpan sebagai data URL ketika endpoint upload tidak tersedia (khusus demo) |
+| Fallback inline | Gambar disimpan sebagai data URL ketika endpoint upload tidak tersedia (khusus lingkungan lokal) |

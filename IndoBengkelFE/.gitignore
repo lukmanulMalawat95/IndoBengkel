@@ -22,5 +22,5 @@ next-env.d.ts
 .DS_Store
 npm-debug.log*
 
-# local demo uploads
+# local uploads
 public/uploads

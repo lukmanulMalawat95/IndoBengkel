@@ -9,7 +9,6 @@ import { VehiclesModule } from "./vehicles/vehicles.module";
 import { BookingsModule } from "./bookings/bookings.module";
 import { WorkshopModule } from "./workshop/workshop.module";
 import { MessagingModule } from "./messaging/messaging.module";
-import { DemoModule } from "./demo/demo.module";
 import { UploadsModule } from "./uploads/uploads.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { HealthController } from "./health.controller";
@@ -29,7 +28,6 @@ import { UploadOwnershipInterceptor } from "./common/security/upload-ownership.i
     BookingsModule,
     WorkshopModule,
     MessagingModule,
-    DemoModule,
     UploadsModule,
     PaymentsModule,
   ],

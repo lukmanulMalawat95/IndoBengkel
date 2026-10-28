@@ -34,7 +34,7 @@ A workshop marketplace where service history is **earned** rather than self-repo
 - English is the default UI language; Indonesian is a full alternate. User-generated content is never translated.
 - Customers use mobile-first; the workshop surface is desktop-first.
 - No refunds in v1. No payout UI; payouts are reconciled outside the app.
-- Demo runs without vendor keys: fake payment provider, MinIO storage, Mailpit email.
+- The local baseline runs without vendor keys: local test payment provider, MinIO storage, Mailpit email.
 
 ## Capabilities and Constraints
 
@@ -44,19 +44,19 @@ Hard exclusions for v1: refunds and post-payment cancellation, multi-currency, W
 
 ## Brand Commitments
 
-Name **IndoBengkel**. Product copy in English by default and Indonesian as an alternate. The user selected visual direction A, **“Night Shift”**: near-black surfaces, lime accent, Space Grotesk headings, Inter body, selected from three offered directions. The logo is a squared B on an ink tile with a solid lime glyph (`design/indobengkel-logo.pen`, `src/components/layout/logo-mark.tsx`); brand photography is still not supplied, so dummy workshop imagery is expected for the demo.
+Name **IndoBengkel**. Product copy in English by default and Indonesian as an alternate. The user selected visual direction A, **“Night Shift”**: near-black surfaces, lime accent, Space Grotesk headings, Inter body, selected from three offered directions. The logo is a squared B on an ink tile with a solid lime glyph (`design/indobengkel-logo.pen`, `src/components/layout/logo-mark.tsx`); brand photography is still not supplied, so placeholder workshop imagery is expected for the local baseline.
 
 ## Evidence on Hand
 
-Product truth lives in `docs/SPEC.md`, `docs/PRD.md`, `docs/FSD.md`, `docs/TSD.md`, `docs/PLAN.md`. No real workshops, customers, reviews, revenue, or photography exist. All names, ratings, products, prices, and service records used in design are synthetic demo data and must be labelled as such when they could be mistaken for real claims. No logo, wordmark, or brand photography is on hand.
+Product truth lives in `docs/SPEC.md`, `docs/PRD.md`, `docs/FSD.md`, `docs/TSD.md`, `docs/PLAN.md`. No real workshops, customers, reviews, revenue, or photography exist. All names, ratings, products, prices, and service records used in design are synthetic development data and must be labelled as such when they could be mistaken for real claims. No logo, wordmark, or brand photography is on hand.
 
 ## Product Principles
 
 1. **Earned history over volunteered claims.** Only a confirmed workshop interaction changes a vehicle's record.
 2. **Price without surprises.** Estimate first; anything above 150% needs explicit approval.
 3. **One task per screen.** The customer's next action is always obvious on a phone.
-4. **Operate at workshop speed.** The owner's desktop flow must survive a busy counter, not a quiet demo.
-5. **Truth in the demo.** Synthetic data is authored at full fidelity and labelled, never presented as real proof.
+4. **Operate at workshop speed.** The owner's desktop flow must survive a busy counter, not a quiet local run.
+5. **Truth in the local baseline.** Synthetic data is authored at full fidelity and labelled, never presented as real proof.
 
 ## Accessibility & Inclusion
 

@@ -99,8 +99,6 @@ export interface User {
 
 export interface Session {
   user: User;
-  accessTokenExpiresAt: string;
-  csrfToken: string;
 }
 
 export interface WorkshopHours {

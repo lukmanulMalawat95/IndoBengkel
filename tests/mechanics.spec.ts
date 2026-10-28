@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { loginAsDemo, uniqueLabel } from "./support/helpers";
+import { loginAs, uniqueLabel } from "./support/helpers";
 
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -8,7 +8,7 @@ const PNG = Buffer.from(
 
 test.describe("Workshop mechanics", () => {
   test("owner adds a mechanic with a photo and it survives a reload", async ({ page }) => {
-    await loginAsDemo(page, "workshop");
+    await loginAs(page, "workshop");
     await page.goto("/en/workshop/mechanics");
     await expect(page.getByRole("heading", { name: "Mechanics" })).toBeVisible();
 

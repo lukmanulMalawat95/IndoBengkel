@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { loginAsDemo } from "./support/helpers";
+import { loginAs } from "./support/helpers";
 
 test.describe("Workshop layout overlays", () => {
   test("the user menu stays above the Leaflet map", async ({ page }) => {
-    await loginAsDemo(page, "workshop");
+    await loginAs(page, "workshop");
     await page.goto("/en/workshop/profile");
 
     await expect(page.locator(".leaflet-container")).toBeVisible();
@@ -31,7 +31,7 @@ test.describe("Workshop layout overlays", () => {
   });
 
   test("the profile has one save action, aligned to the left", async ({ page }) => {
-    await loginAsDemo(page, "workshop");
+    await loginAs(page, "workshop");
     await page.goto("/en/workshop/profile");
 
     const save = page.getByRole("button", { name: "Save profile" });

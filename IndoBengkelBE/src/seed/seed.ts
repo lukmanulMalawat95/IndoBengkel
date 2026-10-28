@@ -3,7 +3,7 @@ import * as bcrypt from "bcryptjs";
 import seedData from "../../prisma/seed-data.json";
 
 const db = seedData as any;
-const DEMO_PASSWORD = "password123";
+const SEED_PASSWORD = process.env.SEED_PASSWORD ?? "password123";
 
 function asDate(value?: string | null): Date | undefined {
   return value ? new Date(value) : undefined;
@@ -14,11 +14,11 @@ function json(value: unknown): Prisma.InputJsonValue {
 }
 
 /**
- * Replace every row with the curated IndoBengkel demo dataset.
- * Idempotent: safe to run on every container start.
+ * Replace every row with the development dataset.
+ * Explicit local/test command only; the API no longer seeds on startup.
  */
 export async function seedDatabase(prisma: PrismaClient) {
-  const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
+  const passwordHash = await bcrypt.hash(SEED_PASSWORD, 10);
 
   await prisma.$executeRawUnsafe(
     `TRUNCATE TABLE "Payment","Order","Cart","Session","Message","Conversation","Notification","Review","ServiceOrder","Vehicle","Product","Service","Mechanic","Workshop","User" CASCADE;`,

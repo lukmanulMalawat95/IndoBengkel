@@ -1,6 +1,6 @@
 /**
  * Creates (or refreshes) the isolated test schema and loads the curated
- * demo snapshot, so every suite starts from the same known data.
+ * development snapshot, so every suite starts from the same known data.
  */
 import "./setup-env";
 import { execFileSync } from "node:child_process";

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { loginAsDemo, pathId } from "./support/helpers";
+import { loginAs, pathId } from "./support/helpers";
 
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 
@@ -7,7 +7,7 @@ test.describe("BengkelShop pickup order", () => {
   test("customer pays and the workshop verifies the pickup code", async ({ page, browser }) => {
     test.slow();
 
-    await loginAsDemo(page, "customer");
+    await loginAs(page, "customer");
 
     // --- add a Kawah product to the cart -----------------------------------------
     await page.goto("/en/shop");
@@ -49,7 +49,7 @@ test.describe("BengkelShop pickup order", () => {
     // --- owner: preparing -> ready -> verify pickup --------------------------------
     const ownerContext = await browser.newContext({ baseURL: BASE_URL });
     const ownerPage = await ownerContext.newPage();
-    await loginAsDemo(ownerPage, "workshop");
+    await loginAs(ownerPage, "workshop");
 
     await ownerPage.goto(`/en/workshop/orders/${orderId}`);
     await expect(ownerPage.getByRole("button", { name: "Start preparing" })).toBeVisible();

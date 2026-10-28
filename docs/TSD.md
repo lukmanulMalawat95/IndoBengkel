@@ -6,15 +6,15 @@
 | Versi | 1.2 (23 Oktober 2026) |
 | Acuan | `SPEC.md`, `PRD.md` v1.2, `FSD.md` v1.2 |
 | Status | Final untuk MVP — baseline lokal (FE + API + DB + Docker) berjalan; target produksi ditandai |
-| Target runtime | Docker Compose lokal: Next.js 15 + NestJS 11 + PostgreSQL 16 + Redis 7; mode mock FE opsional |
+| Target runtime | Docker Compose lokal: Next.js 15 + NestJS 11 + PostgreSQL 16 + Redis 7 |
 
 **Status implementasi (25 Oktober 2026)**
 
 | Area | Berjalan sekarang | Target produksi (belum) |
 |---|---|---|
 | FE | Seluruh layar customer/workshop, EN/ID, Night Shift/Day Shift, skeleton loading | — |
-| API | NestJS `/api/v1`: auth, katalog, kendaraan, booking, commerce, konsol bengkel, chat, notifikasi, demo reset, health | Swagger, email verification, webhook |
-| DB | PostgreSQL 16 + PostGIS 3.4 + Prisma, 16 model, migrasi berversi (`0_init`, `1_postgis_workshop_location`, `2_upload_ownership`, `3_service_order_payments`), seed deterministik (24 bengkel/23 aktif) | `email_outbox`, backup |
+| API | NestJS `/api/v1`: auth, katalog, kendaraan, booking, commerce, konsol bengkel, chat, notifikasi, health | Swagger, email delivery, webhook |
+| DB | PostgreSQL 16 + PostGIS 3.4 + Prisma, 16 model, migrasi berversi (`0_init`, `1_postgis_workshop_location`, `2_upload_ownership`, `3_service_order_payments`), seed deterministik eksplisit (24 bengkel/23 aktif) | `email_outbox`, backup |
 | Auth | Cookie `ib_session` httpOnly + tabel `sessions`, bcrypt, CSRF + rate limit (Redis, fallback memory) | Access/refresh JWT rotation, verified guard |
 | Upload | `POST /api/uploads` → disk, session + MIME + magic bytes + 5 MB; owner dicatat di tabel `Upload` | Presigned S3/MinIO |
 | Bayar | Fake default; Midtrans Core API + signed webhook + locked settlement; VA/QRIS/transfer + cash, cron expiry | Refund, rekonsiliasi, payment-event history |
@@ -30,7 +30,7 @@
 2. **Transisi state eksplisit.** Tidak ada update status bebas; setiap transisi lewat service domain yang memvalidasi state asal.
 3. **Otorisasi di server, bukan di UI.** Setiap endpoint memeriksa kepemilikan resource.
 4. **Uang & stok aman terhadap konkurensi.** Transaksi + lock; tidak ada `read-modify-write` tanpa proteksi.
-5. **Tanpa vendor berbayar.** Pembayaran simulasi + seed deterministik; Mailpit/MinIO adalah target produksi.
+5. **Tanpa vendor berbayar.** Pembayaran local test + seed deterministik eksplisit; Mailpit/MinIO adalah target produksi.
 6. **Satu arah dependensi.** Controller → service → repository/infra. Tidak ada akses Prisma dari controller.
 7. **i18n sejak awal.** Tidak ada string UI di dalam logika.
 
@@ -63,7 +63,7 @@
 
 Redis 7 dipakai untuk counter rate limit (bukan untuk Socket.IO atau email outbox). Runtime lokal belum memakai Socket.IO atau email outbox; chat memakai refetch/polling. Diagram di atas adalah arsitektur target, sedangkan baseline yang berjalan sekarang dijelaskan di tabel status dan §3.
 
-**Runtime yang berjalan.** Repo berisi `IndoBengkelFE` (Next.js 15) dan `IndoBengkelBE` (NestJS 11 + Prisma + PostgreSQL 16 + PostGIS 3.4 + Redis 7), dijalankan bersama lewat `docker-compose.yml`. FE memanggil `/api/v1` same-origin melalui rewrite Next ke `API_INTERNAL_URL`; auth memakai cookie `ib_session` httpOnly dan tabel `sessions`; data disimpan di PostgreSQL (bukan `localStorage`). Rate limit memakai counter Redis agar konsisten antar-replica, dengan fallback in-memory bila Redis tidak tersedia. Mode mock FE tetap ada (`NEXT_PUBLIC_USE_MOCK_API=true`) untuk demo tanpa backend. Upload lokal ditulis ke `public/uploads` dan disajikan lewat route handler `GET /api/uploads/[name]`. Pembayaran memakai fake provider sebagai default (`PAYMENT_PROVIDER=fake`), adapter Midtrans Core API + webhook bertanda tangan sudah tersedia, dan cron expiry berjalan tiap menit; MinIO, Mailpit, dan Socket.IO belum dijalankan.
+**Runtime yang berjalan.** Repo berisi `IndoBengkelFE` (Next.js 15) dan `IndoBengkelBE` (NestJS 11 + Prisma + PostgreSQL 16 + PostGIS 3.4 + Redis 7), dijalankan bersama lewat `docker-compose.yml`. FE memanggil `/api/v1` same-origin melalui rewrite Next ke `API_INTERNAL_URL`; auth memakai cookie `ib_session` httpOnly dan tabel `sessions`; data disimpan di PostgreSQL. Rate limit memakai counter Redis agar konsisten antar-replica, dengan fallback in-memory bila Redis tidak tersedia. FE selalu memanggil API. Upload lokal ditulis ke `public/uploads` dan disajikan lewat route handler `GET /api/uploads/[name]`. Pembayaran memakai local test provider sebagai default (`PAYMENT_PROVIDER=fake`), adapter Midtrans Core API + webhook bertanda tangan sudah tersedia, dan cron expiry berjalan tiap menit; MinIO, Mailpit, dan Socket.IO belum dijalankan.
 
 ---
 
@@ -90,7 +90,6 @@ IndoBengkel/
 │  │  ├─ workshop/                  konsol: profil, montir, layanan, produk,
 │  │  │                             booking, order, review, dashboard
 │  │  ├─ messaging/                 conversation, message, notification
-│  │  ├─ demo/                      reset seed
 │  │  ├─ prisma/                    PrismaService
 │  │  └─ seed/                      seed + run
 │  └─ tsconfig*.json / nest-cli.json
@@ -100,14 +99,14 @@ IndoBengkel/
 │  ├─ src/app/[locale]/             route groups (customer, workshop, auth)
 │  ├─ src/app/api/uploads/          POST upload + GET file
 │  ├─ src/components/ui/            image-upload, skeleton, page-loading, ...
-│  ├─ src/lib/api/                  http/client + hooks + mock fallback
+│  ├─ src/lib/api/                  http/client + hooks
 │  ├─ src/lib/upload-image.ts       validasi → kompresi → XHR upload
 │  └─ messages/{en,id}.json
 └─ IndoBengkelDB/
    └─ seed-export.json              snapshot sumber seed
 ```
 
-`IndoBengkelBE` dan `IndoBengkelFE` berisi kode yang berjalan. Skema dikelola lewat `prisma/migrations/` (baseline `0_init`); container start menjalankan `prisma migrate deploy`, lalu seed yang **mengosongkan tabel dan memuat snapshot** (perubahan demo hilang saat restart). Target produksi menambahkan `db_test`, MinIO, dan Mailpit.
+`IndoBengkelBE` dan `IndoBengkelFE` berisi kode yang berjalan. Skema dikelola lewat `prisma/migrations/` (baseline `0_init`); container start hanya menjalankan `prisma migrate deploy`. Seed dijalankan eksplisit lewat `npm run stack:seed` (Docker) atau `npm run db:seed` (host), dan bersifat destruktif; perubahan data lokal bertahan sampai seed dijalankan ulang. Target produksi menambahkan `db_test`, MinIO, dan Mailpit.
 
 ---
 
@@ -206,8 +205,8 @@ Catatan implementasi:
 | Role | `customer` / `workshop_owner`; endpoint konsol memeriksa `workshop.ownerId` |
 | Logout | hapus sesi + clear cookie |
 | CSRF | `CsrfGuard` double-submit `ib_csrf` + `X-CSRF-Token` untuk semua mutasi ber-sesi; endpoint bootstrap di-exempt |
-| Rate limit | `RateLimitGuard` fixed window: global 1200/menit, login/register 10/menit per IP+email, chat 30/menit, review 10/menit, demo reset 3/menit. Counter di Redis bila `REDIS_URL` diset; fallback in-memory saat Redis tidak tersedia |
-| Email verification | endpoint tersedia, tetapi seed sudah `emailVerifiedAt`; belum ada pengiriman email |
+| Rate limit | `RateLimitGuard` fixed window: global 1200/menit, login/register 10/menit per IP+email, chat 30/menit, review 10/menit. Counter di Redis bila `REDIS_URL` diset; fallback in-memory saat Redis tidak tersedia |
+| Email verification | `POST /auth/verify-email` hanya memverifikasi akun yang sedang login; seed sudah `emailVerifiedAt`; belum ada pengiriman email |
 
 **Target produksi:** access JWT 15 menit + refresh opaque 30 hari dengan rotasi dan deteksi reuse, `VerifiedEmailGuard`, `ResourceOwnerGuard`, serta limit lebih ketat (login 5/menit, register 3/jam, review 5/jam, pickup verify 5/menit). Counter rate limit sudah terdistribusi lewat Redis.
 
@@ -238,7 +237,7 @@ Catatan implementasi:
 | Konsol | `GET/PATCH /workshop/me`, `GET /workshop/dashboard`; CRUD `mechanics`, `services`, `products`; `GET /workshop/bookings` + `confirm`/`decline`/`no-show`; `.../service-orders/:id/start`/`complete`/`cash-paid`; `GET /workshop/orders` + `preparing`/`ready`/`ship`/`verify-pickup`; `GET /workshop/reviews` + `:id/reply` |
 | Chat | `GET/POST /conversations`, `GET /conversations/:id`, `POST .../messages`, `POST .../read` |
 | Notifikasi | `GET /notifications`, `POST /notifications/read-all`, `POST /notifications/:id/read` |
-| Demo | `POST /demo/reset`, `GET /health` |
+| Health | `GET /health` |
 
 **Katalog kode error (ringkas; baseline + target)**
 
@@ -421,7 +420,7 @@ interface PaymentProvider {
 - **MidtransPaymentProvider**: Core API `POST /v2/charge`. `va`/`bank_transfer` dipetakan ke `bank_transfer` (bank dari `MIDTRANS_VA_BANK`, default `bca`); `qris` memakai acquirer `MIDTRANS_QRIS_ACQUIRER` (default `gopay`). Setiap attempt membuat `order_id` Midtrans unik dan menyimpannya sebagai `providerRef`, sehingga retry setelah expiry tidak menabrak `order_id` lama.
 - **Webhook**: `POST /api/v1/payments/midtrans/notification`, public + `SkipCsrf`. Adapter memverifikasi `SHA512(order_id + status_code + gross_amount + serverKey)`, memvalidasi `gross_amount` terhadap `Payment.amount`, lalu `PaymentsService` melakukan lock dan transisi. Status `settlement` / `capture+accept` → `paid`; `expire` → `expired`; `deny`/`cancel`/`failure` → `failed`; `pending`/`refund`/`chargeback` → diabaikan.
 - **Shop order**: `POST /orders` memanggil provider sebelum transaksi, lalu menyimpan order + payment. `POST /orders/:id/pay` adalah simulasi fake: idempotent bila sudah `paid`, `409` bila order `cancelled`/`expired` atau window lewat. Order expired harus checkout ulang (order baru).
-- **Service invoice**: `POST /service-orders/:id/pay` dengan metode online membuat/memperbarui **satu** payment pending + instruksi; `POST /service-orders/:id/simulate-paid` menandai lunas. Payment expired bisa di-retry dengan baris yang sama (id tetap), tetapi `providerRef` Midtrans diganti per attempt. Cash dicatat sebagai `Payment` provider `cash` dan langsung `paid` (owner lewat `cash-paid`, atau customer demo).
+- **Service invoice**: `POST /service-orders/:id/pay` dengan metode online membuat/memperbarui **satu** payment pending + instruksi; `POST /service-orders/:id/simulate-paid` menandai lunas. Payment expired bisa di-retry dengan baris yang sama (id tetap), tetapi `providerRef` Midtrans diganti per attempt. Cash dicatat sebagai `Payment` provider `cash` dan langsung `paid` (owner lewat `cash-paid`, atau customer saat checkout).
 - Endpoint simulasi hanya aktif untuk provider fake (`PaymentsService.assertSimulationAllowed()`).
 - Settlement yang datang setelah payment sudah `expired`/`failed` diabaikan dan perlu rekonsiliasi manual; belum ada refund.
 - Konfigurasi Midtrans: `MIDTRANS_SERVER_KEY` wajib, `MIDTRANS_IS_PRODUCTION=false`, `MIDTRANS_VA_BANK=bca`, `MIDTRANS_QRIS_ACQUIRER=gopay`. `PAYMENT_PROVIDER=midtrans` tanpa server key gagal saat startup.
@@ -468,7 +467,7 @@ Endpoint `POST /api/uploads` (route handler Next.js di `src/app/api/uploads/rout
 4. Encode JPEG kualitas 0.86; turun 0.08 hingga ≤340 KB (batas bawah 0.5) (`Optimising` 22–36%).
 5. `XMLHttpRequest` `POST /api/uploads` dengan `FormData`; progres unggah nyata 42–92% (`Uploading`).
 6. Selesai 100% (`Finishing`/`Uploaded`); durasi minimum 720 ms agar tahap terbaca, bukan kilat.
-7. Jika endpoint gagal (jaringan, 5xx, atau storage read-only `503`), hasil kompresi dibaca sebagai **data URL** (`Finalizing` 94%) sehingga demo tetap selesai tanpa storage.
+7. Jika endpoint gagal (jaringan, 5xx, atau storage read-only `503`), hasil kompresi dibaca sebagai **data URL** (`Finalizing` 94%) sehingga alur tetap selesai tanpa storage.
 
 **UI** (`src/components/ui/image-upload.tsx`):
 - `ImageUpload` untuk satu foto (`photo`, `banner`, `avatar`), `MultiImageUpload` untuk galeri, `UploadProgressBar` untuk progres bertahap.
@@ -553,7 +552,7 @@ Endpoint `POST /api/uploads` (route handler Next.js di `src/app/api/uploads/rout
 | API smoke | health, login, `/auth/me`, katalog, dashboard, booking/order/chat/notification, upload | — |
 | E2E manual | Login owner/customer, semua halaman konsol + customer, cart → checkout → simulasi bayar, booking → owner confirm/start/complete/cash-paid atau online → simulate-paid, order preparing/ready/pickup, review reply, chat kirim, upload file + camera | — (Playwright otomatis sudah di CI) |
 | Unit/Integration | Jest + Supertest + skema terisolasi `indobengkel_test`; 66 test default, 67 saat `REDIS_URL` diset | Tambah cakupan modul lain |
-| Database | `prisma migrate deploy` + seed snapshot (reset tabel); test schema memakai `db push`; CI cek drift | Seed test terpisah |
+| Database | `prisma migrate deploy` + seed eksplisit (reset tabel); test schema memakai `db push`; CI cek drift | Seed test terpisah |
 
 - Smoke API dijalankan terhadap stack Docker; upload diverifikasi dengan file 1200×800 dan URL `/api/uploads/...` tetap tampil setelah reload.
 - Target produksi tetap 70% coverage modul domain + 6 alur Playwright.
@@ -564,7 +563,7 @@ Endpoint `POST /api/uploads` (route handler Next.js di `src/app/api/uploads/rout
 
 **Compose services yang berjalan:** `db` (`postgres:16-alpine`), `redis` (`redis:7-alpine`), `backend` (NestJS), `frontend` (Next.js `next start`). Volume `indobengkel-uploads` dipasang di `/app/public/uploads`. DB memetakan host **55432** (port 5432 dipakai PostgreSQL native di mesin pengembang); Redis memetakan **127.0.0.1:6379**. Backend 4000, frontend 3000.
 
-Healthcheck: `pg_isready` untuk DB, `redis-cli ping` untuk Redis; `wget http://127.0.0.1:4000/api/v1/health` untuk backend; frontend menunggu backend `healthy`. Backend start menjalankan `prisma migrate deploy`, seed snapshot (mengosongkan tabel demo), lalu `node dist/src/main.js`. Redis tidak dipersistensikan (`--save "" --appendonly no`, maxmemory 64 MB, `allkeys-lru`) karena hanya menyimpan counter sementara.
+Healthcheck: `pg_isready` untuk DB, `redis-cli ping` untuk Redis; `wget http://127.0.0.1:4000/api/v1/health` untuk backend; frontend menunggu backend `healthy`. Backend start menjalankan `prisma migrate deploy`, lalu `node dist/src/main.js`; seed dijalankan terpisah lewat `npm run stack:seed`. Redis tidak dipersistensikan (`--save "" --appendonly no`, maxmemory 64 MB, `allkeys-lru`) karena hanya menyimpan counter sementara.
 
 **Env (BE)**
 
@@ -584,22 +583,22 @@ RATE_LIMIT_GLOBAL=1200
 ```
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 NEXT_PUBLIC_MAP_TILE_URL=https://tile.openstreetmap.org/{z}/{x}/{y}.png
-NEXT_PUBLIC_USE_MOCK_API=false
 API_INTERNAL_URL=http://backend:4000
 ```
 
-Build arg FE: `NEXT_PUBLIC_USE_MOCK_API`, `API_INTERNAL_URL`, `NEXT_PUBLIC_APP_URL`. Upload lokal memakai volume; target produksi memakai `S3_*`/MinIO.
+Build arg FE: `API_INTERNAL_URL`, `NEXT_PUBLIC_APP_URL`. Upload lokal memakai volume; target produksi memakai `S3_*`/MinIO.
 
 **Perintah:**
 
 ```
-docker compose up -d --build      # db + redis + backend + frontend
+npm run stack:up                  # build + start + seed sekali
+npm run stack:seed                # reset data lokal ke snapshot seed
 docker compose logs -f backend
 docker compose down               # data DB tetap di volume
 docker compose down -v            # reset DB + upload
 ```
 
-**Tanpa Docker:** `docker compose up -d db redis`, lalu di `IndoBengkelBE`: `npm run db:migrate && npm run build && npm run db:seed && npm run start:dev` dengan `REDIS_URL=redis://localhost:6379/0` (opsional); di `IndoBengkelFE`: `npm run dev` dengan `API_INTERNAL_URL=http://localhost:4000`.
+**Tanpa Docker:** `docker compose up -d db redis`, lalu di `IndoBengkelBE`: `npm run db:migrate && npm run build && npm run db:seed && npm run start:dev` dengan `REDIS_URL=redis://localhost:6379/0` (opsional) dan `SEED_PASSWORD` untuk seed lokal; di `IndoBengkelFE`: `npm run dev` dengan `API_INTERNAL_URL=http://localhost:4000`.
 
 ---
 
@@ -644,19 +643,19 @@ Teknik yang berjalan: pagination, `select` terbatas, TanStack Query, kompresi kl
 | Presigned upload tanpa virus scan | Diterima v1 (gambar), batasi mime + ukuran |
 | Upload lokal tanpa auth | Diterima hanya untuk runtime lokal; produksi wajib guard + presign dan endpoint tidak diekspos publik |
 | Filesystem upload read-only | Klien fallback ke data URL; produksi memakai object storage |
-| Mode mock di `localStorage` | Hanya fallback demo FE; runtime utama memakai PostgreSQL |
+| Seed destruktif | Hanya dijalankan eksplisit untuk lokal/test; container produksi tidak seed saat start |
 | MIME spoof | Lokal memercayai `file.type`; produksi memvalidasi magic bytes + `HEAD` objek |
 
 ---
 
-## 21. Definisi "Siap Demo"
+## 21. Definisi "Siap Baseline Lokal"
 
-- `docker compose up --build` bersih → DB siap → seed → FE + API sehat tanpa langkah manual.
-- Simulasi pembayaran menyelesaikan alur tanpa key eksternal.
+- `npm run stack:up` bersih → DB siap → seed sekali → FE + API sehat tanpa langkah manual.
+- Pembayaran local test menyelesaikan alur tanpa key eksternal.
 - Semua endpoint utama teruji smoke; error envelope konsisten.
 - Alur customer dan owner bisa dilalui di browser tanpa error konsol.
 - Semua field foto menerima file atau kamera, menampilkan progres bertahap, dan URL `/api/uploads/...` bertahan setelah reload.
 - Home rapi tanpa horizontal scroll pada 360–1440 px di Night Shift maupun Day Shift.
 - Skeleton muncul saat data dimuat; tidak ada layar kosong.
 
-**Belum termasuk definisi demo:** email Mailpit, Swagger, Playwright otomatis, Socket.IO, refund/rekonsiliasi Midtrans, dan object storage.
+**Belum termasuk baseline lokal:** email Mailpit, Swagger, Playwright otomatis, Socket.IO, refund/rekonsiliasi Midtrans, dan object storage.

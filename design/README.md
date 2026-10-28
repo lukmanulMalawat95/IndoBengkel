@@ -2,7 +2,7 @@
 
 Open **`design/indobengkel-options.pen`** in the pen.dev editor (VS Code, pen.dev extension) to inspect the live canvas. Exported stills are in `exports/` (dark) and `exports/light/` (light).
 
-All names, workshops, prices, ratings, service records, and photography are synthetic demo content. Imagery is a stand-in for tone and composition, not final product photography.
+All names, workshops, prices, ratings, service records, and photography are synthetic sample content. Imagery is a stand-in for tone and composition, not final product photography.
 
 Every direction is now shown in **dark mode** and **light mode**. Dark is the default Night Shift system; light is the same layout re-tokenised as **Day Shift**, not a separate composition. Use the mode toggle in the `.pen` theme or compare the exported pairs.
 

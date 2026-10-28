@@ -18,10 +18,10 @@
 **Berjalan end-to-end (Docker Compose lokal):**
 
 - FE Next.js 15 untuk seluruh layar customer dan workshop, EN/ID, Night Shift + Day Shift, skeleton loading.
-- NestJS 11 di `/api/v1` + Prisma + PostgreSQL 16: auth cookie sesi, katalog, kendaraan, booking, service order, cart/checkout, pembayaran simulasi, review, chat REST, notifikasi, konsol bengkel, demo reset, health.
+- NestJS 11 di `/api/v1` + Prisma + PostgreSQL 16: auth cookie sesi, katalog, kendaraan, booking, service order, cart/checkout, pembayaran local test, review, chat REST, notifikasi, konsol bengkel, health.
 - Seed deterministik: 24 bengkel (23 aktif), 30 user, 372 layanan, 72 montir, 120 produk, 40 service order, 12 order, 84 review, 3 conversation, 9 notifikasi. Semua bengkel punya owner (`ownerN@indobengkel.test`).
 - Media upload: pipeline klien (validasi → kompresi → XHR), `POST /api/uploads` → volume `public/uploads`, `GET /api/uploads/[name]`, kamera + fallback file picker, progres bertahap.
-- Docker: `db` (host 55432), `backend` (4000), `frontend` (3000), healthcheck, volume upload, seed saat start.
+- Docker: `db` (host 55432), `backend` (4000), `frontend` (3000), healthcheck, volume upload, seed eksplisit lewat `npm run stack:seed`.
 - Verifikasi: `nest build`, `next build`, `tsc --noEmit`, smoke API, E2E browser customer/owner, upload 1200×800, skeleton.
 
 **Belum (target produksi):**
@@ -43,7 +43,6 @@ Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerj
 | API | `IndoBengkelBE/src/` (auth, catalog, commerce, bookings, workshop, messaging) |
 | Skema + seed | `IndoBengkelBE/prisma/schema.prisma`, `prisma/seed-data.json`, `src/seed/` |
 | Orkestrasi | `docker-compose.yml`, `IndoBengkelBE/Dockerfile`, `IndoBengkelFE/Dockerfile` |
-| Mock fallback | `IndoBengkelFE/src/lib/api/mock/` (`ib_mock_db_v1`) |
 | i18n | `IndoBengkelFE/messages/{en,id}.json` |
 | Catatan desain | `design/README.md` |
 
@@ -215,7 +214,7 @@ Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerj
 | T7.5 | Performance | Seed 10k bengkel sementara, ukur search p95 < 300 ms |
 | T7.6 | E2E Playwright | 6 alur utama (termasuk ekspedisi → resi → diterima) |
 | T7.7 | Polish | Empty/error/loading, responsive 360px, fokus keyboard, kontras |
-| T7.8 | Docs | README, akun seed, skrip demo, arsitektur singkat, changelog |
+| T7.8 | Docs | README, akun seed, skrip baseline lokal, arsitektur singkat, changelog |
 
 **Gate final:** seluruh release criteria PRD §13.
 
@@ -246,15 +245,15 @@ Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerj
 
 ## 11b. Fase 9 — Integrasi Backend, DB & Docker (2 hari) ✅ Selesai
 
-**Tujuan:** mengganti mock dengan API nyata tanpa mengubah pengalaman layar, lalu menjalankan seluruh stack dari satu perintah.
+**Tujuan:** menghubungkan FE ke API nyata tanpa mengubah pengalaman layar, lalu menjalankan seluruh stack dari satu perintah.
 
 | ID | Task | Detail |
 |---|---|---|
-| T9.1 | Skema & seed | Prisma 16 model; seed snapshot deterministik (reset tabel saat start); 24 bengkel/23 aktif; owner untuk tiap bengkel |
+| T9.1 | Skema & seed | Prisma 16 model; seed snapshot deterministik eksplisit; 24 bengkel/23 aktif; owner untuk tiap bengkel |
 | T9.2 | Auth & guard | Cookie `ib_session` httpOnly + `sessions`; role customer/owner; query kepemilikan |
-| T9.3 | Modul API | Auth, katalog, kendaraan, booking, commerce, konsol, messaging, notifikasi, demo, health |
-| T9.4 | Integrasi FE | `NEXT_PUBLIC_USE_MOCK_API=false`; rewrite `/api/*` → backend; envelope pagination; error handling |
-| T9.5 | Docker | Dockerfile BE/FE, compose `db`/`backend`/`frontend`, healthcheck, volume upload, seed saat start |
+| T9.3 | Modul API | Auth, katalog, kendaraan, booking, commerce, konsol, messaging, notifikasi, health |
+| T9.4 | Integrasi FE | Rewrite `/api/*` → backend; envelope pagination; error handling |
+| T9.5 | Docker | Dockerfile BE/FE, compose `db`/`backend`/`frontend`, healthcheck, volume upload, seed eksplisit |
 | T9.6 | Skeleton | `PageLoading` bergaya shimmer untuk dashboard/daftar/detail; tidak ada layar kosong saat data dimuat |
 | T9.7 | Verifikasi | Build + typecheck; smoke API; E2E customer/owner; upload file + kamera; dokumentasi v1.2 |
 
@@ -272,7 +271,7 @@ Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerj
 |---|---|---|
 | T10.1 | API integration | Jest + Supertest in-process; schema terisolasi `indobengkel_test`; `db push` + seed di global setup |
 | T10.2 | Cakupan alur kritis | Auth/sesi, discovery + availability, booking state machine (150% approval, cash, cancel, no-show), shop order (stok, pickup code, resi), chat/notifikasi, IDOR |
-| T10.3 | Browser e2e | Playwright Chromium + mobile viewport terhadap stack Docker; login demo, booking, konsol owner, shop, chat |
+| T10.3 | Browser e2e | Playwright Chromium + mobile viewport terhadap stack Docker; login akun seed, booking, konsol owner, shop, chat |
 | T10.4 | CI | GitHub Actions: backend (Postgres service + typecheck + build + test), frontend (typecheck + build), e2e (Docker compose + report/log saat gagal) |
 
 **Deliverable:** `cd IndoBengkelBE && npm test` hijau (66 API test default, 67 saat `REDIS_URL` diset) dan `npm run test:e2e` hijau (9 browser test) di stack lokal; lihat `docs/TESTING.md`.
@@ -289,7 +288,7 @@ Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerj
 |---|---|---|
 | T11d.1 | CSRF | Double-submit `ib_csrf` + `X-CSRF-Token` untuk semua mutasi ber-sesi; endpoint bootstrap di-exempt |
 | T11d.2 | Cookie & header | `Secure` opt-in via `COOKIE_SECURE`, SameSite=Lax, Helmet, CORS allowlist + `X-CSRF-Token` |
-| T11d.3 | Rate limit | Guard fixed window: global 1200/menit, login/register 10/menit per IP+email, chat 30, review 10, demo reset 3; counter Redis + fallback memory |
+| T11d.3 | Rate limit | Guard fixed window: global 1200/menit, login/register 10/menit per IP+email, chat 30, review 10; counter Redis + fallback memory |
 | T11d.4 | Upload | Wajib sesi valid (`GET /auth/me`), batas 5 MB, verifikasi magic bytes jpg/png/webp, nama acak |
 | T11d.5 | Verifikasi | `test/security.e2e-spec.ts` (cookie flags, CSRF 403/201, 429 + Retry-After); suite API 50 hijau; E2E browser tetap hijau |
 
@@ -303,7 +302,7 @@ Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerj
 
 | ID | Task | Detail |
 |---|---|---|
-| T11e.1 | Baseline | `prisma/migrations/0_init` (384 baris SQL) dari `migrate diff --from-empty`; ditandai applied di DB demo yang sudah ada |
+| T11e.1 | Baseline | `prisma/migrations/0_init` (384 baris SQL) dari `migrate diff --from-empty`; ditandai applied di DB lokal yang sudah ada |
 | T11e.2 | Runtime | Dockerfile + compose menjalankan `prisma migrate deploy` sebelum seed/start; `db:migrate`, `db:migrate:dev`, `db:status` |
 | T11e.3 | CI | Backend job menerapkan migrasi ke DB kosong lalu gagal jika `schema.prisma` drift (`migrate diff --exit-code`) |
 | T11e.4 | Test | Schema tes tetap memakai `db push` (disposable); verifikasi fresh schema + diff bersih dijalankan manual |
@@ -365,9 +364,9 @@ Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerj
 
 ---
 
-## 12. Milestone & Demo
+## 12. Milestone & Baseline Lokal
 
-| Milestone | Isi demo |
+| Milestone | Isi baseline |
 |---|---|
 | M1 (akhir F1) | Register → verifikasi email → login → ganti bahasa |
 | M2 (akhir F3) | Cari bengkel terdekat, filter motor/mobil, lihat detail |
@@ -375,13 +374,13 @@ Fase 1–7 di bawah tetap menjadi rencana produksi; Fase 8 dan 9 mencatat pekerj
 | M4 (akhir F5) | BengkelShop → cart lintas bengkel → checkout per bengkel → bayar → pickup code / resi → review produk |
 | M5 (akhir F7) | Chat dua arah, notifikasi, dashboard bengkel, laporan bengkel |
 
-**Skrip demo 10 menit (runtime lokal Docker):**
-1. `docker compose up --build` → buka `http://localhost:3000`; tunjukkan 23 bengkel aktif dan Home tanpa horizontal scroll di 360 px.
-2. Login customer seed (`rina@indobengkel.test` / `password123`) → booking Kawah Motor Works untuk besok → pilih layanan.
-3. Login owner (`andi@kawahmotor.test` / `password123`) → konfirmasi booking → start dengan montir → complete dengan invoice → cash lunas.
+**Skrip baseline lokal 10 menit (runtime lokal Docker):**
+1. `npm run stack:up` → buka `http://localhost:3000`; tunjukkan 23 bengkel aktif dan Home tanpa horizontal scroll di 360 px.
+2. Login customer seed (`rina@indobengkel.test`, password dari `SEED_PASSWORD`) → booking Kawah Motor Works untuk besok → pilih layanan.
+3. Login owner (`andi@kawahmotor.test`, password dari `SEED_PASSWORD`) → konfirmasi booking → start dengan montir → complete dengan invoice → cash lunas.
 4. Tambah montir dengan foto dari file dan kamera → progres unggah → simpan → reload untuk membuktikan `/api/uploads/...` bertahan.
 5. Kembali sebagai customer → lihat booking `paid` → review bengkel.
-6. BengkelShop: tambah oli → cart → checkout pickup → simulasi bayar.
+6. BengkelShop: tambah oli → cart → checkout pickup → pembayaran local test.
 7. Owner: order paid → preparing → ready → verifikasi pickup code.
 8. Chat dua arah (termasuk kirim gambar) dan notifikasi.
 9. Dashboard + laporan owner: pendapatan, transaksi, rating.
@@ -413,9 +412,9 @@ F8 (UI + upload) ──▶ F9 (API + DB + Docker) ──▶ F1–F7 hardening pr
 | Midtrans sandbox terkendala | Verifikasi live tertunda | Fake provider menjaga alur; adapter/webhook diuji dengan mock dan signature lokal |
 | PostGIS + Prisma menyita waktu | +1 hari | Selesai: index ekspresi menghindari `Unsupported`, raw SQL diisolasi di `WorkshopGeoRepository`, `migrate diff` tetap bersih |
 | Socket.IO single instance | Tidak scale | Diterima v1; Redis sudah ada untuk rate limit, adapter Socket.IO menyusul |
-| Seed data kurang meyakinkan | Demo lemah | Dikerjakan bertahap sejak F3, final di F7 |
+| Seed data kurang meyakinkan | Baseline terasa kosong | Dikerjakan bertahap sejak F3, final di F7 |
 | Upload lokal bergantung disk | Gagal di deploy read-only | Volume Docker; fallback data URL; produksi memakai presigned storage |
-| Integrasi API berbeda dari mock | Perilaku berubah saat backend aktif | Smoke API + E2E browser dijalankan pada stack Docker |
+| Integrasi API berbeda dari ekspektasi | Perilaku berubah saat backend aktif | Smoke API + E2E browser dijalankan pada stack Docker |
 | Belum ada test otomatis | Regresi lolos | Tambah Jest/Playwright sebelum hardening |
 | Review menemukan masalah desain | Rework | Checkpoint F1/F4/F7 |
 
@@ -424,7 +423,7 @@ F8 (UI + upload) ──▶ F9 (API + DB + Docker) ──▶ F1–F7 hardening pr
 ## 15. Yang Dibutuhkan dari Kamu
 
 1. **Review** dokumen v1.2 (PRD, FSD, TSD, PLAN) dan stack lokal yang sudah berjalan.
-2. **Uji alur** di `http://localhost:3000` dengan akun demo; catat koreksi.
+2. **Uji alur** di `http://localhost:3000` dengan akun seed lokal; catat koreksi.
 3. **Opsional berikutnya:** logo/wordmark, akun Midtrans sandbox untuk verifikasi live, keputusan object storage.
 4. **Saat checkpoint:** review aplikasi berjalan + daftar koreksi; saya perbaiki sebelum hardening.
 
@@ -456,4 +455,4 @@ F8 (UI + upload) ──▶ F9 (API + DB + Docker) ──▶ F1–F7 hardening pr
 - Perubahan desain → token di `design/tokens.json` + `DESIGN.md` bila sudah ada.
 - Setiap checkpoint menghasilkan catatan: selesai / ditunda / risiko baru.
 
-**Riwayat dokumen:** v1.2 (23 Oktober 2026) — backend NestJS + PostgreSQL + seed + Docker Compose terintegrasi, skeleton loading, upload `/api/uploads`, status dokumen disinkronkan. v1.1 (22 Oktober 2026) — media upload (file + kamera + progres), Fase 8 demo FE.
+**Riwayat dokumen:** v1.2 (23 Oktober 2026) — backend NestJS + PostgreSQL + seed + Docker Compose terintegrasi, skeleton loading, upload `/api/uploads`, status dokumen disinkronkan. v1.1 (22 Oktober 2026) — media upload (file + kamera + progres), Fase 8 baseline FE.

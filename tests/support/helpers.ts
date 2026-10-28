@@ -1,14 +1,15 @@
 import { expect, type Page } from "@playwright/test";
 
-export const CUSTOMER_DEMO = "Customer · Rina";
-export const WORKSHOP_DEMO = "Workshop · Kawah Motor Works";
+export const CUSTOMER_EMAIL = "rina@indobengkel.test";
+export const WORKSHOP_EMAIL = "andi@kawahmotor.test";
+export const SEED_PASSWORD = process.env.SEED_PASSWORD ?? "password123";
 
-/** Sign in with one of the seeded demo accounts from /en/auth/login. */
-export async function loginAsDemo(page: Page, role: "customer" | "workshop") {
+/** Sign in with a seeded local account through the real login form. */
+export async function loginAs(page: Page, role: "customer" | "workshop") {
   await page.goto("/en/auth/login");
-  const card = role === "customer" ? CUSTOMER_DEMO : WORKSHOP_DEMO;
-
-  await page.getByRole("button", { name: new RegExp(card.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) }).click();
+  await page.locator('input[type="email"]').fill(role === "customer" ? CUSTOMER_EMAIL : WORKSHOP_EMAIL);
+  await page.locator('input[type="password"]').fill(SEED_PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL((url) => !url.pathname.includes("/auth/login"), { timeout: 30_000 });
   await expect(page.getByRole("link", { name: /Sign in/i })).toHaveCount(0);
 }

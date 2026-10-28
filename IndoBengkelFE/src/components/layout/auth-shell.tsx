@@ -33,7 +33,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
         </div>
         <div className="relative flex items-center gap-2 text-xs text-faint">
           <CheckCircle2 className="h-4 w-4 text-success" />
-          Demo data · no real payments
+          Secure session · protected checkout
         </div>
       </aside>
 

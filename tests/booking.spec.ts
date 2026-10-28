@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { jakartaDate, loginAsDemo, pathId } from "./support/helpers";
+import { jakartaDate, loginAs, pathId } from "./support/helpers";
 
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 
@@ -7,7 +7,7 @@ test.describe("Service booking, end to end", () => {
   test("customer books, owner completes and records cash, customer reviews", async ({ page, browser }) => {
     test.slow();
 
-    await loginAsDemo(page, "customer");
+    await loginAs(page, "customer");
 
     // --- customer: booking wizard -------------------------------------------------
     await page.goto("/en/workshops/kawah-motor-works/book");
@@ -62,7 +62,7 @@ test.describe("Service booking, end to end", () => {
     // --- owner: confirm -> start -> finish -> cash --------------------------------
     const ownerContext = await browser.newContext({ baseURL: BASE_URL });
     const ownerPage = await ownerContext.newPage();
-    await loginAsDemo(ownerPage, "workshop");
+    await loginAs(ownerPage, "workshop");
 
     await ownerPage.goto(`/en/workshop/bookings/${bookingId}`);
     await expect(ownerPage.getByRole("button", { name: "Confirm", exact: true })).toBeVisible();
@@ -111,7 +111,7 @@ test.describe("Service booking, end to end", () => {
   });
 
   test("customer pays a completed invoice online and simulates settlement", async ({ page }) => {
-    await loginAsDemo(page, "customer");
+    await loginAs(page, "customer");
     await page.goto("/en/bookings");
 
     await page.getByRole("button", { name: "Completed", exact: true }).click();

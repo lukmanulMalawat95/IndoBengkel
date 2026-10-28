@@ -55,6 +55,7 @@ services:
       CORS_ORIGIN: http://localhost:3000
       PAYMENT_PROVIDER: fake
       PAYMENT_EXPIRY_ENABLED: "true"
+      SEED_PASSWORD: ${SEED_PASSWORD:-password123}
     ports:
       - "4000:4000"
     depends_on:
@@ -62,7 +63,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: sh -c "npx prisma migrate deploy && node dist/src/seed/run.js && node dist/src/main.js"
+    command: sh -c "npx prisma migrate deploy && node dist/src/main.js"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/api/v1/health >/dev/null || exit 1"]
       interval: 10s
@@ -74,13 +75,11 @@ services:
     build:
       context: ./IndoBengkelFE
       args:
-        NEXT_PUBLIC_USE_MOCK_API: "false"
         API_INTERNAL_URL: "http://backend:4000"
         NEXT_PUBLIC_APP_URL: "http://localhost:3000"
     container_name: indobengkel-web
     environment:
       API_INTERNAL_URL: http://backend:4000
-      NEXT_PUBLIC_USE_MOCK_API: "false"
       NEXT_PUBLIC_APP_URL: http://localhost:3000
     ports:
       - "3000:3000"

@@ -118,14 +118,13 @@ describe("Auth and session contract", () => {
     expect(workshops.body.meta).toMatchObject({ total: expect.any(Number) });
   });
 
-  it("verifies an email address for the given user id", async () => {
+  it("verifies the authenticated user's email address", async () => {
     const { agent, user } = await registerCustomer(app);
     expect(user).toBeDefined();
 
-    const verified = await agent
-      .post(`${API}/auth/verify-email`)
-      .send({ userId: user.id })
-      .expect(201);
+    await agentFor(app).post(`${API}/auth/verify-email`).expect(401);
+
+    const verified = await agent.post(`${API}/auth/verify-email`).expect(201);
     expect(verified.body.data.emailVerified).toBe(true);
 
     const me = await agent.get(`${API}/auth/me`).expect(200);
