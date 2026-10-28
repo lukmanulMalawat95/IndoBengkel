@@ -15,6 +15,7 @@ import {
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { AddressFields } from "@/components/domain/address-fields";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -66,6 +67,7 @@ export default function CheckoutPage() {
   const [recipient, setRecipient] = useState("");
   const [addressLine, setAddressLine] = useState("");
   const [city, setCity] = useState("");
+  const [province, setProvince] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [error, setError] = useState("");
 
@@ -146,7 +148,11 @@ export default function CheckoutPage() {
     }
     if (
       needsAddress &&
-      (!recipient.trim() || !addressLine.trim() || !city.trim() || !postalCode.trim())
+      (!recipient.trim() ||
+        !addressLine.trim() ||
+        !province.trim() ||
+        !city.trim() ||
+        !postalCode.trim())
     ) {
       setError(t("checkout.addressRequired"));
       return;
@@ -156,6 +162,7 @@ export default function CheckoutPage() {
         recipient: recipient.trim(),
         phone: phone.trim(),
         line: addressLine.trim(),
+        province: province.trim(),
         city: city.trim(),
         postalCode: postalCode.trim(),
       };
@@ -210,6 +217,7 @@ export default function CheckoutPage() {
                   onChange={(event) => setPhone(event.target.value)}
                   placeholder="+62 812 3456 7890"
                   inputMode="tel"
+                  aria-label={t("checkout.phone")}
                 />
               </Field>
             </div>
@@ -342,12 +350,13 @@ export default function CheckoutPage() {
             <Card className="p-5">
               <h2 className="font-heading text-base font-semibold text-fg">{t("checkout.deliveryAddress")}</h2>
               <p className="mt-1 text-xs text-muted">{t("checkout.deliveryAddressHint")}</p>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="mt-4">
                 <Field label={t("checkout.recipient")}>
-                  <Input value={recipient} onChange={(event) => setRecipient(event.target.value)} />
-                </Field>
-                <Field label={t("checkout.city")}>
-                  <Input value={city} onChange={(event) => setCity(event.target.value)} />
+                  <Input
+                    value={recipient}
+                    onChange={(event) => setRecipient(event.target.value)}
+                    aria-label={t("checkout.recipient")}
+                  />
                 </Field>
               </div>
               <div className="mt-4">
@@ -357,17 +366,24 @@ export default function CheckoutPage() {
                     value={addressLine}
                     onChange={(event) => setAddressLine(event.target.value)}
                     placeholder="Jl. Contoh No. 12, RT 03/RW 05"
+                    aria-label={t("checkout.addressLine")}
                   />
                 </Field>
               </div>
-              <div className="mt-4 max-w-40">
-                <Field label={t("checkout.postalCode")}>
-                  <Input
-                    value={postalCode}
-                    onChange={(event) => setPostalCode(event.target.value)}
-                    inputMode="numeric"
-                  />
-                </Field>
+              <div className="mt-4">
+                <AddressFields
+                  province={province}
+                  city={city}
+                  postalCode={postalCode}
+                  onProvinceChange={setProvince}
+                  onCityChange={setCity}
+                  onPostalCodeChange={setPostalCode}
+                  labels={{
+                    province: t("checkout.province"),
+                    city: t("checkout.city"),
+                    postalCode: t("checkout.postalCode"),
+                  }}
+                />
               </div>
             </Card>
           ) : null}

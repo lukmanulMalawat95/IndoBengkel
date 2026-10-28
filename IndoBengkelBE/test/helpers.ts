@@ -98,7 +98,9 @@ export async function registerWorkshop(
       workshopName: name,
       workshopType: type,
       addressLine: "Jl. Pengujian No. 1",
-      city: "Jakarta",
+      province: "DKI Jakarta",
+      city: "Jakarta Selatan",
+      postalCode: "12730",
       lat: -6.2,
       lng: 106.8,
     })

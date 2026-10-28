@@ -4,6 +4,7 @@ import { Loader2, MapPin, Wrench } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { AddressFields } from "@/components/domain/address-fields";
 import { MapPanel } from "@/components/domain/map-panel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -31,6 +32,8 @@ export default function RegisterWorkshopPage() {
     workshopType: "motor" as WorkshopType,
     addressLine: "",
     city: "",
+    province: "",
+    postalCode: "",
   });
   const [coords, setCoords] = useState(defaultCenter);
   const [terms, setTerms] = useState(false);
@@ -64,7 +67,9 @@ export default function RegisterWorkshopPage() {
       !form.password ||
       !form.workshopName.trim() ||
       !form.addressLine.trim() ||
-      !form.city.trim()
+      !form.province.trim() ||
+      !form.city.trim() ||
+      !form.postalCode.trim()
     ) {
       setError(t("validation.required"));
       return;
@@ -92,6 +97,8 @@ export default function RegisterWorkshopPage() {
         workshopType: form.workshopType,
         addressLine: form.addressLine.trim(),
         city: form.city.trim(),
+        province: form.province.trim(),
+        postalCode: form.postalCode.trim(),
         lat: coords.lat,
         lng: coords.lng,
       });
@@ -195,13 +202,25 @@ export default function RegisterWorkshopPage() {
                 onChange={(event) => set("addressLine", event.target.value)}
               />
             </Field>
-            <Field label={t("auth.city")} hint={t("auth.cityHint")}>
-              <Input
-                required
-                value={form.city}
-                onChange={(event) => set("city", event.target.value)}
-              />
-            </Field>
+            <AddressFields
+              province={form.province}
+              city={form.city}
+              postalCode={form.postalCode}
+              onProvinceChange={(value) => set("province", value)}
+              onCityChange={(value) => set("city", value)}
+              onPostalCodeChange={(value) => set("postalCode", value)}
+              labels={{
+                province: t("auth.province"),
+                city: t("auth.city"),
+                postalCode: t("auth.postalCode"),
+              }}
+              hints={{ city: t("auth.cityHint") }}
+              onCitySelected={(city) => {
+                if (city.lat != null && city.lng != null) {
+                  setCoords({ lat: city.lat, lng: city.lng });
+                }
+              }}
+            />
           </div>
         </div>
 

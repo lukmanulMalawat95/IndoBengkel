@@ -82,4 +82,52 @@ test.describe("BengkelShop pickup order", () => {
 
     await ownerContext.close();
   });
+
+  test("customer checkout cascades province, city, and postal code", async ({ page }) => {
+    test.slow();
+
+    await loginAs(page, "customer");
+    await page.goto("/en/shop");
+    await page.getByPlaceholder(/Search parts, brands, workshops/).fill("Kawah");
+
+    const productCard = page
+      .locator("article")
+      .filter({ hasText: "Nmax 1L 10W-40" })
+      .first();
+    await expect(productCard).toBeVisible();
+    await productCard.getByRole("button", { name: "Add to cart" }).click();
+
+    await page.goto("/en/cart");
+    await page.getByRole("link", { name: /Checkout/ }).click();
+    await expect(page.getByRole("heading", { name: "Checkout" })).toBeVisible();
+
+    await page.getByRole("button", { name: /Delivery/ }).first().click();
+    await expect(page.getByRole("heading", { name: "Delivery address" })).toBeVisible();
+
+    await page.getByRole("textbox", { name: "Recipient name" }).fill("Rina Prameswari");
+    await page.getByRole("textbox", { name: "Full address" }).fill("Jl. Braga No. 10");
+
+    const province = page.getByRole("combobox", { name: "Province" });
+    await province.click();
+    await province.fill("Jawa Barat");
+    await page.getByRole("option", { name: "Jawa Barat", exact: true }).click();
+
+    const city = page.getByRole("combobox", { name: "City / regency" });
+    await expect(city).toBeEnabled();
+    await city.click();
+    await city.fill("Bandung");
+    await expect(page.getByRole("option", { name: "Kota Bandung", exact: true })).toBeVisible();
+    await page.getByRole("option", { name: "Kota Bandung", exact: true }).click();
+
+    const postal = page.getByRole("combobox", { name: "Postal code" });
+    await expect(postal).toBeEnabled();
+    await postal.click();
+    await postal.fill("40115");
+    await expect(page.getByRole("option", { name: "40115", exact: true })).toBeVisible();
+    await page.getByRole("option", { name: "40115", exact: true }).click();
+
+    await page.getByRole("button", { name: "Place order" }).click();
+    await page.waitForURL(/\/en\/orders\/[^/]+$/);
+    await expect(page.getByText(/Kota Bandung, Jawa Barat 40115/).first()).toBeVisible();
+  });
 });

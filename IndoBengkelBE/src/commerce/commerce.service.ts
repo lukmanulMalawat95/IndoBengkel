@@ -185,8 +185,9 @@ export class CommerceService {
         !input.shipping?.courier ||
         !String(address?.recipient ?? "").trim() ||
         !String(address?.line ?? "").trim() ||
+        !String(address?.province ?? "").trim() ||
         !String(address?.city ?? "").trim() ||
-        !String(address?.postalCode ?? "").trim()
+        !/^\d{5}$/.test(String(address?.postalCode ?? "").trim())
       ) {
         throw new ApiError("INVALID_SHIPPING", "Complete the delivery address first.", 400);
       }
@@ -206,6 +207,7 @@ export class CommerceService {
           recipient: String(address.recipient).trim(),
           phone: String(input.customerPhone ?? user.phone),
           line: String(address.line).trim(),
+          province: String(address.province).trim(),
           city: String(address.city).trim(),
           postalCode: String(address.postalCode).trim(),
         },

@@ -4,6 +4,7 @@ import { CheckCircle2, Clock3, Loader2, MapPin, Save, Store } from "lucide-react
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { AddressFields } from "@/components/domain/address-fields";
 import { MapPanel } from "@/components/domain/map-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -98,7 +99,13 @@ export default function WorkshopProfilePage() {
     event.preventDefault();
     if (!form) return;
     setError("");
-    if (!form.name.trim() || !form.addressLine.trim() || !form.city.trim()) {
+    if (
+      !form.name.trim() ||
+      !form.addressLine.trim() ||
+      !form.province.trim() ||
+      !form.city.trim() ||
+      !form.postalCode.trim()
+    ) {
       setError(t("validation.required"));
       return;
     }
@@ -190,15 +197,28 @@ export default function WorkshopProfilePage() {
                   <Input value={form.addressLine} onChange={(event) => set("addressLine", event.target.value)} />
                 </Field>
               </div>
-              <Field label={t("console.city")}>
-                <Input value={form.city} onChange={(event) => set("city", event.target.value)} />
-              </Field>
-              <Field label={t("console.province")}>
-                <Input value={form.province} onChange={(event) => set("province", event.target.value)} />
-              </Field>
-              <Field label={t("console.postalCode")}>
-                <Input value={form.postalCode} onChange={(event) => set("postalCode", event.target.value)} />
-              </Field>
+              <div className="sm:col-span-2">
+                <AddressFields
+                  province={form.province}
+                  city={form.city}
+                  postalCode={form.postalCode}
+                  onProvinceChange={(value) => set("province", value)}
+                  onCityChange={(value) => set("city", value)}
+                  onPostalCodeChange={(value) => set("postalCode", value)}
+                  labels={{
+                    province: t("console.province"),
+                    city: t("console.city"),
+                    postalCode: t("console.postalCode"),
+                  }}
+                  onCitySelected={(city) => {
+                    if (city.lat != null && city.lng != null) {
+                      setForm((current) =>
+                        current ? { ...current, lat: city.lat!, lng: city.lng! } : current,
+                      );
+                    }
+                  }}
+                />
+              </div>
               <div className="sm:col-span-2">
                 <Field label={t("console.coverUrl")}>
                   <ImageUpload
@@ -311,7 +331,10 @@ export default function WorkshopProfilePage() {
                 { label: t("console.workshopName"), done: Boolean(form.name) },
                 { label: t("console.description"), done: form.description.length > 20 },
                 { label: t("console.coverUrl"), done: Boolean(form.coverUrl) },
-                { label: t("console.address"), done: Boolean(form.addressLine && form.city) },
+                {
+                  label: t("console.address"),
+                  done: Boolean(form.addressLine && form.city && form.province && form.postalCode),
+                },
                 { label: t("console.phone"), done: Boolean(form.phone) },
                 { label: t("console.openingHours"), done: form.hours.length > 0 },
                 { label: t("console.capacity"), done: form.slotCapacityPerHour > 0 },

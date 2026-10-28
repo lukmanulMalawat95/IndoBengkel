@@ -233,6 +233,27 @@ describe("BengkelShop orders", () => {
     const product = await addProduct({ weightGrams: 1_200 });
 
     await addToCart(product.id, 1).expect(201);
+
+    const missingProvince = await customer
+      .post(`${API}/orders`)
+      .send({
+        workshopId: workshop.workshop.id,
+        fulfillment: "expedition",
+        paymentMethod: "va",
+        customerPhone: "+628111222333",
+        shipping: {
+          courier: "jne",
+          address: {
+            recipient: "E2E Customer",
+            line: "Jl. Pengiriman No. 8",
+            city: "Kota Bandung",
+            postalCode: "40111",
+          },
+        },
+      })
+      .expect(400);
+    expect(missingProvince.body.error.code).toBe("INVALID_SHIPPING");
+
     const created = await customer
       .post(`${API}/orders`)
       .send({
@@ -245,7 +266,8 @@ describe("BengkelShop orders", () => {
           address: {
             recipient: "E2E Customer",
             line: "Jl. Pengiriman No. 8",
-            city: "Bandung",
+            province: "Jawa Barat",
+            city: "Kota Bandung",
             postalCode: "40111",
           },
         },
@@ -256,7 +278,14 @@ describe("BengkelShop orders", () => {
     expect(order.fulfillment).toBe("expedition");
     expect(order.shippingCost).toBe(24_000);
     expect(order.total).toBe(74_000);
-    expect(order.shipping).toMatchObject({ courier: "jne" });
+    expect(order.shipping).toMatchObject({
+      courier: "jne",
+      address: {
+        province: "Jawa Barat",
+        city: "Kota Bandung",
+        postalCode: "40111",
+      },
+    });
 
     await customer.post(`${API}/orders/${order.id}/pay`).expect(201);
     await workshop.agent.post(`${API}/workshop/orders/${order.id}/preparing`).expect(201);

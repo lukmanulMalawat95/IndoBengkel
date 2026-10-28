@@ -182,7 +182,7 @@ Index: `(workshop_id, is_active)`, GIN trigram pada `title`.
 
 **orders**
 `id, code (unique, mis. ORD-7K2M9), customer_id, workshop_id, status, fulfillment (pickup|expedition), subtotal, discount_total, shipping_cost, total, pickup_code (6 char), customer_phone, expires_at, paid_at, preparing_at, ready_at, shipped_at, completed_at, cancelled_at, cancel_reason`
-**order_shipping** `order_id, courier, service, cost, recipient, phone, address_line, city, postal_code, tracking_number, shipped_at`
+**order_shipping** `order_id, courier, service, cost, recipient, phone, address_line, province, city, postal_code, tracking_number, shipped_at`
 **order_items** `id, order_id, product_id, title_snapshot, unit_price, qty, subtotal, weight_grams`
 Unique partial: `pickup_code` unik hanya untuk order berstatus aktif. `order_shipping` wajib bila `fulfillment = expedition`; `tracking_number` wajib sebelum `shipped`.
 

@@ -59,6 +59,9 @@ export class WorkshopService {
         (data.workshopType ?? workshop.workshopType) &&
         (data.phone ?? workshop.phone) &&
         (data.addressLine ?? workshop.addressLine) &&
+        (data.city ?? workshop.city) &&
+        (data.province ?? workshop.province) &&
+        (data.postalCode ?? workshop.postalCode) &&
         (data.coverUrl ?? workshop.coverUrl) &&
         this.hasOpenHour(data.hours ?? workshop.hours) &&
         user.emailVerified,

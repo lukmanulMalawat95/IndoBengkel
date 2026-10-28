@@ -73,6 +73,25 @@ describe("Auth and session contract", () => {
     expect(response.body.error.code).toBe("VALIDATION_ERROR");
   });
 
+  it("rejects a workshop registration without a complete regional address", async () => {
+    const response = await agentFor(app)
+      .post(`${API}/auth/register/workshop`)
+      .send({
+        email: uniqueEmail("workshop-address"),
+        password: PASSWORD,
+        ownerName: "Workshop Owner",
+        phone: "+628123000444",
+        workshopName: "Incomplete Address Workshop",
+        workshopType: "motor",
+        addressLine: "Jl. Pengujian No. 1",
+        city: "Kota Bandung",
+        lat: -6.9,
+        lng: 107.6,
+      })
+      .expect(422);
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+  });
+
   it("logs in with valid credentials, rejects wrong ones, and invalidates the session on logout", async () => {
     const { agent, user } = await registerCustomer(app);
     await agent.post(`${API}/auth/logout`).expect(201);

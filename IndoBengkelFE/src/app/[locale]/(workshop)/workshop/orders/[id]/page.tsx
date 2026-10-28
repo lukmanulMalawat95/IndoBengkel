@@ -252,7 +252,10 @@ export default function WorkshopOrderDetailPage() {
                     {order.shipping.address.recipient} · {order.shipping.address.phone}
                   </p>
                   <p className="mt-1">
-                    {order.shipping.address.line}, {order.shipping.address.city}{" "}
+                    {order.shipping.address.line}, {order.shipping.address.city}
+                    {order.shipping.address.province
+                      ? `, ${order.shipping.address.province}`
+                      : ""}{" "}
                     {order.shipping.address.postalCode}
                   </p>
                 </div>

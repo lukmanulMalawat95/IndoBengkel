@@ -68,6 +68,8 @@ export class AuthService {
     const workshopType = input.workshopType === "mobil" ? "mobil" : "motor";
     const addressLine = String(input.addressLine ?? "").trim();
     const city = String(input.city ?? "").trim();
+    const province = String(input.province ?? "").trim();
+    const postalCode = String(input.postalCode ?? "").trim();
     const lat = Number(input.lat);
     const lng = Number(input.lng);
 
@@ -79,6 +81,8 @@ export class AuthService {
       !workshopName ||
       !addressLine ||
       !city ||
+      !province ||
+      !/^\d{5}$/.test(postalCode) ||
       !Number.isFinite(lat) ||
       !Number.isFinite(lng)
     ) {
@@ -121,8 +125,8 @@ export class AuthService {
           email,
           addressLine,
           city,
-          province: "",
-          postalCode: "",
+          province,
+          postalCode,
           countryCode: "ID",
           lat,
           lng,

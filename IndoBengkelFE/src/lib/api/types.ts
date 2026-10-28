@@ -33,6 +33,7 @@ export interface ShippingAddress {
   recipient: string;
   phone: string;
   line: string;
+  province?: string;
   city: string;
   postalCode: string;
 }
@@ -480,7 +481,9 @@ export interface RegisterWorkshopInput {
   workshopName: string;
   workshopType: WorkshopType;
   addressLine: string;
+  province: string;
   city: string;
+  postalCode: string;
   lat: number;
   lng: number;
 }
