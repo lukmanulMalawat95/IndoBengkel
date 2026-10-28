@@ -77,13 +77,22 @@ export function dayOfWeekInZone(dateKey: string, timeZone: string) {
 
 /** UTC instant of a wall-clock hour in a timezone. */
 export function slotStartInZone(dateKey: string, hour: number, timeZone: string) {
-  let guess = new Date(`${dateKey}T${String(hour).padStart(2, "0")}:00:00Z`);
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const target = Date.UTC(year, month - 1, day, hour, 0, 0);
+  let guess = new Date(target);
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const parts = zoneParts(guess, timeZone);
-    const actual = parts.hour * 60 + parts.minute;
-    const target = hour * 60;
-    if (actual === target) break;
-    guess = new Date(guess.getTime() + (target - actual) * 60_000);
+    const actual = Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour,
+      parts.minute,
+      parts.second,
+    );
+    const diff = target - actual;
+    if (diff === 0) break;
+    guess = new Date(guess.getTime() + diff);
   }
   return guess;
 }
