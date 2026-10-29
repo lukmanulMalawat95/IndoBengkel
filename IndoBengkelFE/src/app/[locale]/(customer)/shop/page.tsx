@@ -2,7 +2,7 @@
 
 import { PackageSearch, Search, ShoppingBag, SlidersHorizontal, X } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ProductCard } from "@/components/domain/product-card";
 import { ProductDrawer } from "@/components/domain/product-drawer";
@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
+import { Pagination } from "@/components/ui/pagination";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/features/auth/auth-provider";
@@ -20,6 +21,8 @@ import { Link, useRouter } from "@/i18n/navigation";
 import { useAddToCart, useCarts, useProducts } from "@/lib/api/hooks";
 import type { Product, ProductCategory, WorkshopType } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+
+const PRODUCTS_PER_PAGE = 20;
 
 const categories: (ProductCategory | "all")[] = [
   "all",
@@ -38,18 +41,43 @@ export default function ShopPage() {
   const [category, setCategory] = useState<ProductCategory | "all">("all");
   const [type, setType] = useState<WorkshopType | "all">("all");
   const [sort, setSort] = useState<"rating" | "newest" | "price_asc" | "price_desc">("rating");
+  const [page, setPage] = useState(1);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const productsQuery = useProducts({ q: q || undefined, category, workshopType: type, sort, perPage: 48 });
+  const productsQuery = useProducts({
+    q: q || undefined,
+    category,
+    workshopType: type,
+    sort,
+    page,
+    perPage: PRODUCTS_PER_PAGE,
+  });
   const cartsQuery = useCarts(Boolean(user));
   const addToCart = useAddToCart();
   const products = productsQuery.data?.data ?? [];
+  const total = productsQuery.data?.meta?.total ?? products.length;
+  const perPage = productsQuery.data?.meta?.perPage ?? PRODUCTS_PER_PAGE;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const currentPage = Math.min(Math.max(1, productsQuery.data?.meta?.page ?? page), totalPages);
+  const from = total === 0 ? 0 : (currentPage - 1) * perPage + 1;
+  const to = Math.min(currentPage * perPage, total);
   const cartCount =
     cartsQuery.data?.reduce(
-      (total, cart) => total + cart.items.reduce((count, item) => count + item.qty, 0),
+      (count, cart) => count + cart.items.reduce((itemCount, item) => itemCount + item.qty, 0),
       0,
     ) ?? 0;
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  const changePage = (nextPage: number) => {
+    const safePage = Math.min(Math.max(1, nextPage), totalPages);
+    if (safePage === page) return;
+    setPage(safePage);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const handleAdd = async (product: Product, qty = 1) => {
     if (!user) {
@@ -69,6 +97,7 @@ export default function ShopPage() {
     setCategory("all");
     setType("all");
     setSort("rating");
+    setPage(1);
   };
 
   return (
@@ -93,14 +122,20 @@ export default function ShopPage() {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
           <Input
             value={q}
-            onChange={(event) => setQ(event.target.value)}
+            onChange={(event) => {
+              setQ(event.target.value);
+              setPage(1);
+            }}
             placeholder={t("shop.searchPlaceholder")}
             className="pl-9"
           />
           {q ? (
             <button
               type="button"
-              onClick={() => setQ("")}
+              onClick={() => {
+                setQ("");
+                setPage(1);
+              }}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-faint hover:bg-surface2 hover:text-fg"
             >
               <X className="h-3.5 w-3.5" />
@@ -118,7 +153,10 @@ export default function ShopPage() {
               <button
                 key={item}
                 type="button"
-                onClick={() => setCategory(item)}
+                onClick={() => {
+                  setCategory(item);
+                  setPage(1);
+                }}
                 className={cn(
                   "shrink-0 rounded-full border px-2.5 py-1.5 text-[11px] font-medium",
                   category === item
@@ -133,7 +171,10 @@ export default function ShopPage() {
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <Select
               value={type}
-              onChange={(event) => setType(event.target.value as typeof type)}
+              onChange={(event) => {
+                setType(event.target.value as typeof type);
+                setPage(1);
+              }}
               className="h-8 w-auto rounded-pill text-[11px]"
             >
               <option value="all">{t("shop.allTypes")}</option>
@@ -142,7 +183,10 @@ export default function ShopPage() {
             </Select>
             <Select
               value={sort}
-              onChange={(event) => setSort(event.target.value as typeof sort)}
+              onChange={(event) => {
+                setSort(event.target.value as typeof sort);
+                setPage(1);
+              }}
               className="h-8 w-auto rounded-pill text-[11px]"
             >
               <option value="rating">{t("shop.topRated")}</option>
@@ -163,7 +207,11 @@ export default function ShopPage() {
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted">
-          {t("shop.productsCount", { count: productsQuery.data?.meta?.total ?? products.length })}
+          {productsQuery.data
+            ? t("shop.showingRange", { from, to, total })
+            : productsQuery.isLoading
+              ? t("common.loading")
+              : ""}
         </p>
         <Badge variant="outline">{t("common.pickupOrDelivery")}</Badge>
       </div>
@@ -209,6 +257,10 @@ export default function ShopPage() {
           ))}
         </div>
       )}
+
+      {products.length > 0 && totalPages > 1 ? (
+        <Pagination page={page} totalPages={totalPages} onPageChange={changePage} />
+      ) : null}
 
       <ProductDrawer
         product={selectedProduct}

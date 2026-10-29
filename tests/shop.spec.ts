@@ -83,6 +83,23 @@ test.describe("BengkelShop pickup order", () => {
     await ownerContext.close();
   });
 
+  test("customer pages through the shop 20 products at a time", async ({ page }) => {
+    await loginAs(page, "customer");
+    await page.goto("/en/shop");
+    await expect(page.getByRole("heading", { name: "BengkelShop" })).toBeVisible();
+    await expect(page.getByText(/Showing 1–20 of \d+ products/)).toBeVisible();
+
+    const pageInput = page.getByRole("textbox", { name: "Page" });
+    await pageInput.fill("2");
+    await pageInput.press("Enter");
+    await expect(page.getByText(/Showing 21–40 of \d+ products/)).toBeVisible();
+    await expect(pageInput).toHaveValue("2");
+
+    await page.getByRole("button", { name: "Next page" }).click();
+    await expect(page.getByText(/Showing 41–60 of \d+ products/)).toBeVisible();
+    await expect(pageInput).toHaveValue("3");
+  });
+
   test("customer checkout cascades province, city, and postal code", async ({ page }) => {
     test.slow();
 

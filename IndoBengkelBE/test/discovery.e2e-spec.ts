@@ -203,6 +203,22 @@ describe("Discovery and availability", () => {
     }
   });
 
+  it("paginates products 20 at a time and returns the requested page", async () => {
+    const first = await agentFor(app).get(`${API}/products?perPage=20&page=1`).expect(200);
+
+    expect(first.body.meta).toMatchObject({ page: 1, perPage: 20 });
+    expect(first.body.meta.total).toBeGreaterThan(20);
+    expect(first.body.data).toHaveLength(20);
+
+    const second = await agentFor(app).get(`${API}/products?perPage=20&page=2`).expect(200);
+
+    expect(second.body.meta).toMatchObject({ page: 2, perPage: 20 });
+    expect(second.body.data).toHaveLength(20);
+
+    const firstPageIds = new Set(first.body.data.map((product: { id: string }) => product.id));
+    expect(firstPageIds.has(second.body.data[0].id)).toBe(false);
+  });
+
   it("validates the availability date and returns hour slots", async () => {
     const list = await agentFor(app).get(`${API}/workshops?perPage=100`).expect(200);
     const target = list.body.data.find((workshop: any) => workshop.nextSlot);
